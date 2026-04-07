@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sublimasyon Forma Üretim Sistemi</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <svg class="logo-icon" viewBox="0 0 40 40" fill="none">
+        <rect width="40" height="40" rx="8" fill="#2563eb"/>
+        <path d="M8 28 L20 8 L32 28 Z" stroke="white" stroke-width="2.5" fill="none"/>
+        <circle cx="20" cy="20" r="3" fill="white"/>
+      </svg>
+      <div>
+        <h1>Sublimasyon Forma Üretim Sistemi</h1>
+        <p class="tagline">PLT dosyasından otomatik grading + desen yerleştirme + PDF çıktı</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Adım göstergesi -->
+    <div class="stepper" id="stepper">
+      <div class="step active" data-step="1">
+        <div class="step-circle"><span>1</span></div>
+        <span>PLT Yükle</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" data-step="2">
+        <div class="step-circle"><span>2</span></div>
+        <span>Beden Seç</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" data-step="3">
+        <div class="step-circle"><span>3</span></div>
+        <span>Tasarım Yükle</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" data-step="4">
+        <div class="step-circle"><span>4</span></div>
+        <span>Üret & İndir</span>
+      </div>
+    </div>
+
+    <!-- Adım 1: PLT Yükleme -->
+    <section class="card" id="step-1">
+      <div class="card-header">
+        <span class="step-badge">1</span>
+        <h2>PLT / HPGL Pastal Dosyası</h2>
+      </div>
+      <p class="card-desc">
+        Tüm bedenleri içeren pastal (PLT/HPGL) dosyasını yükleyin.
+        Sistem beden isimlerini ve parça tiplerini otomatik tespit edecek.
+      </p>
+
+      <input type="file" id="plt-input" accept=".plt,.hpgl,.hgl" style="display:none">
+      <label for="plt-input" class="drop-zone" id="plt-drop">
+        <div class="drop-icon">
+          <svg viewBox="0 0 48 48" fill="none">
+            <path d="M24 4 L24 32 M14 22 L24 32 L34 22" stroke="#2563eb" stroke-width="3" stroke-linecap="round"/>
+            <path d="M8 36 L8 44 L40 44 L40 36" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <p class="drop-text">PLT dosyasını sürükleyin veya tıklayın</p>
+        <p class="drop-hint">.plt · .hpgl · .hgl — Maks 50MB</p>
+      </label>
+
+      <div class="file-info hidden" id="plt-info">
+        <div class="file-badge">
+          <span class="file-name" id="plt-filename"></span>
+          <button class="btn-icon" id="plt-clear">✕</button>
+        </div>
+        <button class="btn-primary" id="plt-upload-btn">
+          <span>Analiz Et</span>
+          <svg viewBox="0 0 20 20" fill="currentColor" width="18"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+        </button>
+      </div>
+
+      <div class="progress-bar hidden" id="plt-progress">
+        <div class="progress-fill" id="plt-progress-fill"></div>
+      </div>
+
+      <!-- PLT analiz sonuçları -->
+      <div class="analysis-result hidden" id="plt-result">
+        <div class="result-row">
+          <div>
+            <h3>Tespit Edilen Bedenler</h3>
+            <div class="size-chips" id="size-chips"></div>
+          </div>
+          <div>
+            <h3>Parça Tipleri</h3>
+            <div class="piece-chips" id="piece-chips"></div>
+          </div>
+          <div>
+            <a id="debug-plt-link" class="btn-secondary" target="_blank" style="margin-top:1.5rem;display:none">
+              🔍 Ham Parça Görünümü
+            </a>
+          </div>
+        </div>
+        <div class="warning-box hidden" id="plt-warnings"></div>
+
+        <!-- Parça tipi düzenleme tablosu -->
+        <div id="piece-assign-section" style="margin-top:1.25rem">
+          <h3 style="margin-bottom:.6rem">Parça Tipi Atamaları
+            <span style="font-weight:400;font-size:.78rem;color:var(--gray-500)">
+              — Yanlış tespit varsa değiştir
+            </span>
+          </h3>
+          <div id="piece-assign-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Adım 2: Beden Seçimi -->
+    <section class="card disabled" id="step-2" aria-disabled="true">
+      <div class="card-header">
+        <span class="step-badge">2</span>
+        <h2>Beden Seçimi</h2>
+      </div>
+      <p class="card-desc">
+        Üretilecek bedenleri seçin. PLT'de tüm bedenler mevcutsa grading atlanır.
+      </p>
+
+      <!-- Dinamik olarak JS tarafından doldurulur -->
+      <div id="size-selector" class="size-selector"></div>
+
+      <div style="margin-top:1.5rem">
+        <h3>Çıktı Bedenleri
+          <button class="btn-tiny" id="select-all-sizes" style="margin-left:.5rem">Tümünü Seç</button>
+        </h3>
+        <div class="output-sizes" id="output-sizes"></div>
+      </div>
+
+      <div class="option-row" style="margin-top:1.5rem">
+        <label class="option-label">
+          Kesim payı (bleed):
+          <select id="bleed-select" class="select-field">
+            <option value="0">0 mm</option>
+            <option value="3" selected>3 mm</option>
+            <option value="5">5 mm</option>
+            <option value="10">10 mm</option>
+          </select>
+        </label>
+        <label class="option-label">
+          DPI:
+          <select id="dpi-select" class="select-field">
+            <option value="150">150 DPI (hızlı)</option>
+            <option value="300" selected>300 DPI (baskı kalitesi)</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <!-- Adım 3: Tasarım Yükleme -->
+    <section class="card disabled" id="step-3" aria-disabled="true">
+      <div class="card-header">
+        <span class="step-badge">3</span>
+        <h2>Tasarım Görselleri</h2>
+      </div>
+      <p class="card-desc">
+        Her parça için tasarım görselini yükleyin. <strong>Tümüne Uygula</strong> ile
+        aynı deseni bütün parçalara atayabilirsiniz.
+      </p>
+
+      <!-- Tümüne uygula -->
+      <div class="apply-all-row" id="apply-all-row">
+        <input type="file" id="input-all" accept=".png,.jpg,.jpeg,.svg,.webp" style="display:none">
+        <label for="input-all" class="btn-secondary" style="cursor:pointer">
+          📁 Tümüne Aynı Deseni Uygula
+        </label>
+        <span class="apply-all-hint" id="apply-all-hint"></span>
+      </div>
+
+      <!-- Dinamik parça kartları — JS tarafından oluşturulur -->
+      <div class="design-grid" id="design-grid"></div>
+    </section>
+
+    <!-- Adım 4: Üretim ve İndirme -->
+    <section class="card disabled" id="step-4" aria-disabled="true">
+      <div class="card-header">
+        <span class="step-badge">4</span>
+        <h2>Üretim ve İndirme</h2>
+      </div>
+      <p class="card-desc">
+        Tüm ayarlar hazır. Grading çalıştırın ve PDF'leri indirin.
+      </p>
+
+      <button class="btn-primary btn-large" id="generate-btn">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="22">
+          <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"/>
+        </svg>
+        Tüm Bedenleri Üret
+      </button>
+
+      <!-- İlerleme -->
+      <div class="hidden" id="generate-progress">
+        <div class="progress-label" id="progress-label">Hazırlanıyor...</div>
+        <div class="progress-bar">
+          <div class="progress-fill animated" id="gen-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Sonuçlar -->
+      <div class="hidden" id="result-section">
+        <div class="result-header">
+          <h3>Üretilen Bedenler</h3>
+          <a id="zip-download-btn" class="btn-primary btn-zip hidden" href="#">
+            ⬇ Tümünü ZIP İndir
+          </a>
+        </div>
+        <div class="download-grid" id="download-grid"></div>
+
+        <!-- SVG önizleme -->
+        <div class="preview-section" id="preview-section">
+          <h3>Önizleme</h3>
+          <div class="preview-tabs" id="preview-tabs"></div>
+          <div class="svg-preview-container">
+            <iframe id="svg-frame" title="SVG Önizleme"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hata kutusu -->
+      <div class="error-box hidden" id="error-box"></div>
+      <!-- Başarısız bedenleri yeniden dene -->
+      <div class="retry-box hidden" id="retry-box"></div>
+    </section>
+
+    <!-- Parça önizleme (PLT canvas) -->
+    <section class="card hidden" id="plt-preview-section">
+      <div class="card-header">
+        <span class="step-badge">⊕</span>
+        <h2>PLT Parça Önizlemesi</h2>
+      </div>
+      <div class="canvas-toolbar">
+        <select id="preview-size-select" class="select-field"></select>
+        <button class="btn-secondary" id="fit-canvas-btn">Sığdır</button>
+      </div>
+      <canvas id="plt-canvas"></canvas>
+    </section>
+  </main>
+
+  <footer>
+    <p>Sublimasyon Forma Üretim Sistemi · FastAPI + Python · 300 DPI Baskı Çıktısı</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
