@@ -61,13 +61,15 @@ app.add_middleware(
 )
 
 # ─── Dizinler ─────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent.parent
+# Vercel serverless: sadece /tmp yazılabilir; yerel çalışmada proje kökü kullanılır
+_IS_VERCEL = os.environ.get("VERCEL") == "1"
+BASE_DIR = Path("/tmp/sublimation") if _IS_VERCEL else Path(__file__).parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
-FRONTEND_DIR = BASE_DIR / "frontend"
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
-UPLOAD_DIR.mkdir(exist_ok=True)
-OUTPUT_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 SESSIONS_FILE = BASE_DIR / "sessions.pkl"
 
 # ─── Frontend statik dosyaları ───────────────────────────────────────────────
