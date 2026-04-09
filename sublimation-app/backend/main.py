@@ -234,53 +234,117 @@ async def upload_plt(
     if not raw_pieces:
         raise HTTPException(422, "PLT dosyasında kalıp parçası bulunamadı")
 
-    # Etiket yoksa → geometrik sınıflandırma pipeline'ı kullan
-    # p.label = PLT'deki ham LB metni; boyut atama _infer sonradan yapılır
     has_labels = any(p.label.strip() for p in raw_pieces)
 
-    if not has_labels:
-        logger.info("PLT'de etiket yok — geometrik sınıflandırma devreye alınıyor")
-        grouped = _classify_unlabeled_plt(save_path, raw_pieces)
-    else:
+    if has_labels:
+        # Etiketli PLT: beden + parça tipi otomatik grupla
         grouped = group_pieces(raw_pieces)
         grouped = match_pieces_across_sizes(grouped)
+        mode = "labeled"
+    else:
+        # Etiketsiz PLT: tüm anlamlı parçaları tek "BASE" bedene koy
+        # Kullanıcı arayüzden hangisi ön/arka/kol olduğunu seçer
+        grouped = _build_flat_group(raw_pieces)
+        mode = "flat"
 
     s.plt_path = str(save_path)
     s.parsed_pieces = grouped
+    if mode == "flat":
+        s.reference_size = "BASE"
 
-    # Özet
     sizes_found = list(grouped.keys())
-    piece_counts = {sz: len(pts) for sz, pts in grouped.items()}
+    warnings = []
+    if mode == "flat":
+        warnings.append(
+            "PLT'de beden etiketi bulunamadı. "
+            "Aşağıdaki parçalardan hangisinin ön/arka/kol olduğunu seçin."
+        )
 
     logger.info(
-        f"PLT yüklendi: {file.filename} → "
-        f"{len(raw_pieces)} ham parça, {len(sizes_found)} beden"
-        f" ({'etiketli' if has_labels else 'geometrik sınıflandırma'})"
+        f"PLT yüklendi: {file.filename} → {len(raw_pieces)} ham parça, "
+        f"mod={mode}, {len(grouped.get('BASE', grouped.get(sizes_found[0] if sizes_found else '', {})))} parça gösteriliyor"
     )
-
-    # Uyarı: referans beden PLT'de var mı?
-    warnings = []
-    if not has_labels:
-        warnings.append(
-            "PLT'de beden etiketi bulunamadı — geometrik sınıflandırma kullanıldı. "
-            "Parça atamalarını /debug-plt ile kontrol edin."
-        )
-    if s.reference_size not in grouped and sizes_found:
-        s.reference_size = sizes_found[0]
-        warnings.append(
-            f"Referans beden otomatik '{s.reference_size}' olarak ayarlandı."
-        )
 
     _save_sessions()
 
     return {
         "total_pieces": len(raw_pieces),
         "detected_sizes": sizes_found,
-        "piece_counts_per_size": piece_counts,
         "piece_types_found": s.detected_piece_types(),
         "labeled": has_labels,
+        "mode": mode,
         "warnings": warnings,
     }
+
+
+def _build_flat_group(raw_pieces) -> "Dict[str, Dict[str, Any]]":
+    """
+    Etiketsiz PLT'den anlamlı parçaları seç ve "BASE" beden altında topla.
+
+    Filtreleme:
+      - Çok büyük parçalar (kağıt/çerçeve kenarı) atılır
+      - Çok küçük parçalar (çentik/notch) atılır
+      - Kalan parçalar alana göre büyükten küçüğe sıralanır
+      - Aralarında yakın konumda olanlar (üst üste graded nest) çakışma
+        tespiti ile tekilleştirilir
+    """
+    from .models import PatternPiece
+
+    if not raw_pieces:
+        return {}
+
+    areas = sorted(p.area() for p in raw_pieces)
+    # Medyan alanı referans al
+    median_area = areas[len(areas) // 2]
+
+    # Çok büyük (border) veya çok küçük (notch) parçaları filtrele
+    filtered = [
+        p for p in raw_pieces
+        if 0.08 * median_area < p.area() < 80 * median_area
+    ]
+    if not filtered:
+        filtered = raw_pieces[:]
+
+    # Alana göre büyükten küçüğe sırala
+    filtered.sort(key=lambda p: p.area(), reverse=True)
+
+    # Graded nest dosyalarda aynı parça birden fazla kez çizilmiş olabilir.
+    # Centroid mesafesi ve alan benzerliğine göre tekrar eden parçaları at:
+    # eğer iki parça arasında centroid mesafesi < parça çapının %30'u ise
+    # ve alanları %20 içindeyse → aynı parça, sadece birini tut.
+    unique: list = []
+    for p in filtered:
+        cx, cy = p.centroid()
+        diameter = (p.area() ** 0.5)
+        is_dup = False
+        for kept in unique:
+            kx, ky = kept.centroid()
+            dist = ((cx - kx)**2 + (cy - ky)**2) ** 0.5
+            area_ratio = p.area() / (kept.area() + 1e-9)
+            if dist < diameter * 0.3 and 0.8 < area_ratio < 1.25:
+                is_dup = True
+                break
+        if not is_dup:
+            unique.append(p)
+
+    # İlk 12 parça ile sınırla (ekran sığdırmak için)
+    unique = unique[:12]
+
+    # Hepsini "BASE" bedeni altında piece_1, piece_2, ... olarak isimlendrir
+    # Büyük parçalar önce → front, back; küçükler → sleeve
+    type_hints = ["front", "back", "left_sleeve", "right_sleeve",
+                  "front_2", "back_2", "sleeve_3", "sleeve_4",
+                  "piece_5", "piece_6", "piece_7", "piece_8"]
+
+    group: Dict[str, PatternPiece] = {}
+    for i, p in enumerate(unique):
+        key = type_hints[i] if i < len(type_hints) else f"piece_{i+1}"
+        # Orijinal label'ı koru, piece_type'ı güncelle
+        p.piece_type = key
+        p.size = "BASE"
+        group[key] = p
+
+    return {"BASE": group}
 
 
 def _classify_unlabeled_plt(
@@ -452,6 +516,12 @@ async def run_grading(
             except ValueError:
                 pass
 
+    # BASE modu: tek beden, grading yok
+    is_flat = list(s.parsed_pieces.keys()) == ["BASE"] or "BASE" in s.parsed_pieces
+    if is_flat:
+        requested_sizes = ["BASE"]
+        s.reference_size = "BASE"
+
     # Grading motoru
     engine = GradingEngine(
         grouped_pieces=s.parsed_pieces,
@@ -464,7 +534,7 @@ async def run_grading(
 
     if all_present:
         logger.info("Tüm bedenler PLT'de mevcut — grading atlandı (passthrough)")
-        _set_progress(session_id, 15, "Parçalar hazırlanıyor (passthrough)...")
+        _set_progress(session_id, 15, "Parçalar hazırlanıyor...")
         graded_all = engine.passthrough_all(target_sizes=requested_sizes)
         s.grading_vectors = {}
     else:
