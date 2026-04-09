@@ -17,18 +17,29 @@ PIECE_TYPES = ["front", "back", "left_sleeve", "right_sleeve"]
 
 PIECE_ALIASES: Dict[str, str] = {
     # Türkçe
-    "on": "front", "ön": "front", "on_panel": "front",
-    "arka": "back", "back": "back",
-    "sol_kol": "left_sleeve", "sol kol": "left_sleeve",
-    "sag_kol": "right_sleeve", "sag kol": "right_sleeve", "sağ kol": "right_sleeve",
-    # İngilizce kısa
-    "f": "front", "b": "back", "ls": "left_sleeve", "rs": "right_sleeve",
+    "on": "front", "ön": "front", "one": "front",
+    "on_panel": "front", "ön_panel": "front",
+    "on_parca": "front", "ön_parça": "front",
+    "arka": "back", "arka_panel": "back",
+    "arka_parca": "back", "arka_parça": "back",
+    "sol_kol": "left_sleeve", "sol kol": "left_sleeve", "sol": "left_sleeve",
+    "sag_kol": "right_sleeve", "sag kol": "right_sleeve",
+    "sağ_kol": "right_sleeve", "sağ kol": "right_sleeve", "sağ": "right_sleeve",
+    "kol": "left_sleeve",  # tek kol varsa left_sleeve
+    # İngilizce
+    "front": "front", "back": "back",
+    "f": "front", "b": "back",
+    "ls": "left_sleeve", "rs": "right_sleeve",
     "lsleeve": "left_sleeve", "rsleeve": "right_sleeve",
+    "left_sleeve": "left_sleeve", "right_sleeve": "right_sleeve",
     "left": "left_sleeve", "right": "right_sleeve",
     "sleeve_l": "left_sleeve", "sleeve_r": "right_sleeve",
+    "sleeve": "left_sleeve",
     # Sayısal (bazı CAD sistemleri)
     "piece1": "front", "piece2": "back",
     "piece3": "left_sleeve", "piece4": "right_sleeve",
+    # CAD kısa kodlar
+    "fp": "front", "bp": "back", "lk": "left_sleeve", "rk": "right_sleeve",
 }
 
 # HPGL'de 1 unit = 0.025 mm (40 unit/mm)

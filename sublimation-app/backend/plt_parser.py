@@ -23,13 +23,16 @@ from .models import PatternPiece, SIZE_ORDER, PIECE_ALIASES, SIZE_INDEX
 logger = logging.getLogger(__name__)
 
 # Bilinen beden tokenları
+# Not: \b yerine (?<![a-zA-Z0-9]) kullanılıyor — alt çizgi (_) ile ayrılmış
+# etiketlerde de çalışsın diye (örn: M_ON, M_FRONT, S_ARKA)
 _RE_SIZE = re.compile(
-    r'\b(XXS|XS|XXXL|XXL|XL|[SML]|[2-5]XL)\b', re.IGNORECASE
+    r'(?<![a-zA-Z0-9])(XXS|XS|XXXL|XXL|XL|[SML]|[2-5]XL|[345][0-9])(?![a-zA-Z0-9])',
+    re.IGNORECASE
 )
 _RE_PIECE = re.compile(
-    r'\b(front|back|arka|[oö]n|sol[_ ]?kol|sa[gğ][_ ]?kol|'
+    r'(?<![a-zA-Z])(front|back|arka|[oö]n[_e]?|sol[_ ]?kol|sa[gğ][_ ]?kol|'
     r'left[_ ]?sleeve|right[_ ]?sleeve|lsleeve|rsleeve|'
-    r'sleeve[_ ]?[lr]|piece[1-4]|[fb][12]?|ls|rs)\b',
+    r'sleeve[_ ]?[lr]|piece[1-4]|[fb][12]?|ls|rs|lk|rk|fp|bp)(?![a-zA-Z])',
     re.IGNORECASE
 )
 
@@ -246,12 +249,49 @@ def _parse_label(label: str) -> Tuple[str, str]:
     clean = re.sub(r'\\003|\x03', '', label).strip()
     upper = clean.upper()
     m = _RE_SIZE.search(upper)
-    size = m.group(1).upper() if m else ""
+    raw_size = m.group(1).upper() if m else ""
+    size = _normalize_size(raw_size)
 
     m2 = _RE_PIECE.search(clean)
     raw = m2.group(1).lower() if m2 else ""
     ptype = PIECE_ALIASES.get(raw, raw or "unknown")
     return size, ptype
+
+
+# Avrupa numerik beden → standart beden eşlemesi
+_NUMERIC_SIZE_MAP: Dict[str, str] = {
+    "32": "XXS", "34": "XXS",
+    "36": "XS",
+    "38": "S",
+    "40": "M",
+    "42": "L",
+    "44": "XL",
+    "46": "XXL",
+    "48": "XXXL",
+    "50": "XXXL",
+    # Çocuk / unisex
+    "35": "XS", "37": "S", "39": "M", "41": "L", "43": "XL", "45": "XXL",
+}
+
+
+def _normalize_size(raw: str) -> str:
+    """
+    Ham beden string'ini standart SIZE_ORDER değerine dönüştür.
+    Numeric Avrupa bedenleri de desteklenir (36→XS, 40→M vb.)
+    """
+    if not raw:
+        return ""
+    up = raw.upper()
+    # Zaten bilinen beden mi?
+    if up in ("XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"):
+        return up
+    # 2XL, 3XL vb. → XXL, XXXL
+    m = re.match(r'^([2-5])XL$', up)
+    if m:
+        n = int(m.group(1))
+        return {2: "XXL", 3: "XXXL", 4: "XXXL", 5: "XXXL"}.get(n, "XXL")
+    # Numerik → standart
+    return _NUMERIC_SIZE_MAP.get(up, up)
 
 
 # ─── Metadata tahmini ────────────────────────────────────────────────────────
@@ -279,12 +319,25 @@ def _infer_missing_metadata(pieces: List[PatternPiece]) -> None:
     if needs_size:
         known_sizes = set(p.size for p in pieces if p.size)
         if not known_sizes:
-            # Hiç etiket yok: parçaları gruplara ayır
+            # Hiç etiket yok: konumsal kümelemeyle beden ata
+            _assign_sizes_by_clustering(pieces)
+        elif len(needs_size) > len(pieces) * 0.3:
+            # %30'dan fazlası belirsiz → tüm parçalar için yeniden kümeleme
             _assign_sizes_by_clustering(pieces)
         else:
-            # Bazı bedenler biliniyor — bilinmeyenleri sona ekle
+            # Sadece birkaç parça belirsiz — en yakın bilinen bedeni ata
             for p in needs_size:
-                p.size = "M"  # varsayılan
+                cx = float(p.centroid()[0])
+                # X koordinatına en yakın bilinen beden parçasını bul
+                best_size = "M"
+                best_dist = float("inf")
+                for ref in pieces:
+                    if ref.size and ref is not p:
+                        dist = abs(float(ref.centroid()[0]) - cx)
+                        if dist < best_dist:
+                            best_dist = dist
+                            best_size = ref.size
+                p.size = best_size
 
     # ── Parça tipi tahmini ─────────────────────────────────────────────────
     if needs_type:
@@ -310,25 +363,133 @@ def _infer_missing_metadata(pieces: List[PatternPiece]) -> None:
 
 def _assign_sizes_by_clustering(pieces: List[PatternPiece]) -> None:
     """
-    Etiket hiç yoksa: parçaları alana göre sırala ve gruplara böl.
-    Tipik: 4 parça/beden (front, back, sol kol, sağ kol)
+    Etiket hiç yoksa: parçaları konumsal kümelemeyle bedenlere ata.
+
+    Strateji:
+      1. X merkezine göre kümeleme (yanyana pastal düzeni için)
+      2. Küme sayısı otomatik tespit edilir — büyük boşluklar = farklı beden
+      3. Küme başarısız olursa alan bazlı fallback (N_PER_SIZE otomatik)
     """
-    N_PER_SIZE = 4
     n = len(pieces)
     if n == 0:
         return
 
-    # Alana göre sırala
+    # ── 1. X-konum bazlı kümeleme ──────────────────────────────────────────────
+    piece_cx = [(float(p.centroid()[0]), p) for p in pieces]
+    piece_cx.sort(key=lambda t: t[0])
+    xs = [x for x, _ in piece_cx]
+
+    groups_x = _cluster_by_gaps(xs, piece_cx)
+
+    # Küme mantıklı görünüyorsa (≥2 grup, her grup ≥1 parça) kullan
+    if len(groups_x) >= 2:
+        _assign_size_names(groups_x)
+        logger.info(
+            f"Beden tespiti: X-konum kümeleme → {len(groups_x)} beden "
+            f"({[len(g) for g in groups_x]} parça/beden)"
+        )
+        return
+
+    # ── 2. Y-konum bazlı kümeleme (dikey pastal) ──────────────────────────────
+    piece_cy = [(float(p.centroid()[1]), p) for p in pieces]
+    piece_cy.sort(key=lambda t: t[0])
+    ys = [y for y, _ in piece_cy]
+
+    groups_y = _cluster_by_gaps(ys, piece_cy)
+
+    if len(groups_y) >= 2:
+        _assign_size_names(groups_y)
+        logger.info(
+            f"Beden tespiti: Y-konum kümeleme → {len(groups_y)} beden "
+            f"({[len(g) for g in groups_y]} parça/beden)"
+        )
+        return
+
+    # ── 3. Alan bazlı fallback — N_PER_SIZE otomatik ──────────────────────────
+    # Parça başına beden sayısını 1-5 arasında dene, en dengeli bölünmeyi seç
+    best_n = _detect_pieces_per_size(pieces)
     sorted_pieces = sorted(pieces, key=lambda p: p.area())
-    n_sizes = max(1, n // N_PER_SIZE)
-
-    # Mevcut boyut sırası: S, M, L, XL, XXL
-    start_idx = max(0, 3 - n_sizes // 2)  # M etrafında merkezle
+    n_sizes = max(1, n // best_n)
+    start_idx = max(0, 3 - n_sizes // 2)
     size_candidates = SIZE_ORDER[start_idx:start_idx + n_sizes]
-
     for i, p in enumerate(sorted_pieces):
-        size_idx = min(i // N_PER_SIZE, len(size_candidates) - 1)
+        size_idx = min(i // best_n, len(size_candidates) - 1)
         p.size = size_candidates[size_idx]
+    logger.info(
+        f"Beden tespiti: alan kümeleme → {n_sizes} beden "
+        f"(parça/beden={best_n})"
+    )
+
+
+def _cluster_by_gaps(
+    coords: List[float],
+    piece_pairs: List[Tuple[float, "PatternPiece"]],
+) -> List[List["PatternPiece"]]:
+    """
+    Koordinat listesindeki büyük boşluklarda grupları böl.
+    Boşluk eşiği: medyan boşluğun 2.5 katı.
+    """
+    if len(coords) < 2:
+        return [[p for _, p in piece_pairs]]
+
+    diffs = [coords[i+1] - coords[i] for i in range(len(coords)-1)]
+    sorted_diffs = sorted(diffs)
+    median_diff = sorted_diffs[len(sorted_diffs)//2]
+
+    # Tüm parçalar birbiri ardındaysa (boşluk yok) tek grup
+    if median_diff < 1e-6:
+        return [[p for _, p in piece_pairs]]
+
+    threshold = median_diff * 2.5
+
+    groups: List[List["PatternPiece"]] = [[piece_pairs[0][1]]]
+    for i in range(1, len(piece_pairs)):
+        if diffs[i-1] > threshold:
+            groups.append([])
+        groups[-1].append(piece_pairs[i][1])
+
+    return groups
+
+
+def _assign_size_names(groups: List[List["PatternPiece"]]) -> None:
+    """Grupları sıraya göre beden adlarıyla etiketle."""
+    n = len(groups)
+    start_idx = max(0, 3 - n // 2)
+    size_candidates = SIZE_ORDER[start_idx:start_idx + n]
+    for i, group in enumerate(groups):
+        size = size_candidates[i] if i < len(size_candidates) else SIZE_ORDER[-1]
+        for p in group:
+            p.size = size
+
+
+def _detect_pieces_per_size(pieces: List["PatternPiece"]) -> int:
+    """
+    Parça başına beden sayısını otomatik tespit et (1-6 arası dene).
+    En dengeli gruplanmayı veren değeri döndür.
+    """
+    n = len(pieces)
+    if n <= 2:
+        return 1
+    areas = sorted(p.area() for p in pieces)
+    best_n, best_score = 4, float("inf")
+    for cand in range(1, 7):
+        n_groups = n // cand
+        if n_groups < 2:
+            continue
+        # Her gruptaki alanların varyansı — düşük varyans = daha dengeli
+        remainder = n % cand
+        groups = [areas[i*cand:(i+1)*cand] for i in range(n_groups)]
+        if not groups:
+            continue
+        total_var = sum(
+            sum((a - sum(g)/len(g))**2 for a in g) / len(g)
+            for g in groups if g
+        )
+        score = total_var / (n_groups * max(areas[-1]**2, 1e-9))
+        if score < best_score:
+            best_score = score
+            best_n = cand
+    return best_n
 
 
 def group_pieces(pieces: List[PatternPiece]) -> Dict[str, Dict[str, PatternPiece]]:

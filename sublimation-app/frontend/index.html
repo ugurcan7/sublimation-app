@@ -4,19 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sublimasyon Forma Üretim Sistemi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
     <div class="header-inner">
-      <svg class="logo-icon" viewBox="0 0 40 40" fill="none">
-        <rect width="40" height="40" rx="8" fill="#2563eb"/>
-        <path d="M8 28 L20 8 L32 28 Z" stroke="white" stroke-width="2.5" fill="none"/>
-        <circle cx="20" cy="20" r="3" fill="white"/>
-      </svg>
-      <div>
-        <h1>Sublimasyon Forma Üretim Sistemi</h1>
-        <p class="tagline">PLT dosyasından otomatik grading + desen yerleştirme + PDF çıktı</p>
+      <div class="logo-wrap">
+        <svg class="logo-icon" viewBox="0 0 44 44" fill="none">
+          <rect width="44" height="44" rx="12" fill="url(#lg)"/>
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#3b82f6"/>
+              <stop offset="100%" stop-color="#2563eb"/>
+            </linearGradient>
+          </defs>
+          <path d="M10 32 L22 10 L34 32 Z" stroke="white" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+          <circle cx="22" cy="22" r="3.5" fill="white"/>
+          <circle cx="22" cy="22" r="1.5" fill="#3b82f6"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>SublimasYon</h1>
+        <p class="tagline">PLT dosyasından otomatik grading · desen yerleştirme · PDF çıktı</p>
+      </div>
+      <div class="header-badge">
+        <span class="badge-pro">PRO</span>
+        <span class="badge-dpi">300 DPI</span>
       </div>
     </div>
   </header>
@@ -95,19 +111,18 @@
             <div class="piece-chips" id="piece-chips"></div>
           </div>
           <div>
-            <a id="debug-plt-link" class="btn-secondary" target="_blank" style="margin-top:1.5rem;display:none">
-              🔍 Ham Parça Görünümü
+            <a id="debug-plt-link" class="btn-secondary debug-link" target="_blank" style="display:none">
+              <svg viewBox="0 0 16 16" fill="currentColor" width="13"><path d="M6.5 1a.5.5 0 000 1h1v1.07A7.002 7.002 0 018 17a7 7 0 01-5.657-11.12.5.5 0 10-.686-.726A8 8 0 108 0a8.001 8.001 0 00-1.5.141V1h-1a.5.5 0 000 1h3z"/></svg>
+              Ham Parça Görünümü
             </a>
           </div>
         </div>
         <div class="warning-box hidden" id="plt-warnings"></div>
 
         <!-- Parça tipi düzenleme tablosu -->
-        <div id="piece-assign-section" style="margin-top:1.25rem">
-          <h3 style="margin-bottom:.6rem">Parça Tipi Atamaları
-            <span style="font-weight:400;font-size:.78rem;color:var(--gray-500)">
-              — Yanlış tespit varsa değiştir
-            </span>
+        <div id="piece-assign-section" class="assign-section">
+          <h3 class="assign-title">Parça Tipi Atamaları
+            <span class="assign-hint">— Yanlış tespit varsa değiştir</span>
           </h3>
           <div id="piece-assign-table"></div>
         </div>
@@ -127,14 +142,14 @@
       <!-- Dinamik olarak JS tarafından doldurulur -->
       <div id="size-selector" class="size-selector"></div>
 
-      <div style="margin-top:1.5rem">
-        <h3>Çıktı Bedenleri
-          <button class="btn-tiny" id="select-all-sizes" style="margin-left:.5rem">Tümünü Seç</button>
+      <div class="output-sizes-section">
+        <h3 class="section-subheading">Çıktı Bedenleri
+          <button class="btn-tiny" id="select-all-sizes">Tümünü Seç</button>
         </h3>
         <div class="output-sizes" id="output-sizes"></div>
       </div>
 
-      <div class="option-row" style="margin-top:1.5rem">
+      <div class="option-row option-row-top">
         <label class="option-label">
           Kesim payı (bleed):
           <select id="bleed-select" class="select-field">
@@ -188,8 +203,8 @@
         Tüm ayarlar hazır. Grading çalıştırın ve PDF'leri indirin.
       </p>
 
-      <button class="btn-primary btn-large" id="generate-btn">
-        <svg viewBox="0 0 20 20" fill="currentColor" width="22">
+      <button class="btn-primary btn-large btn-generate" id="generate-btn">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="20">
           <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"/>
         </svg>
         Tüm Bedenleri Üret
@@ -244,7 +259,17 @@
   </main>
 
   <footer>
-    <p>Sublimasyon Forma Üretim Sistemi · FastAPI + Python · 300 DPI Baskı Çıktısı</p>
+    <div class="footer-inner">
+      <div class="footer-logo">
+        <svg viewBox="0 0 28 28" fill="none" width="20">
+          <rect width="28" height="28" rx="7" fill="#2563eb" opacity=".15"/>
+          <path d="M6 21L14 7L22 21Z" stroke="#2563eb" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+          <circle cx="14" cy="14" r="2" fill="#2563eb"/>
+        </svg>
+        <span class="footer-brand">SublimasYon</span>
+      </div>
+      <p class="footer-tech">FastAPI · Python · 300 DPI Baskı Çıktısı</p>
+    </div>
   </footer>
 
   <script src="app.js"></script>
