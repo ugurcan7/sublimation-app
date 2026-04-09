@@ -151,7 +151,8 @@ def _output_dir(session_id: str) -> Path:
 
 @app.get("/")
 async def root():
-    return {"message": "Sublimasyon Forma API", "docs": "/docs", "ui": "/app"}
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/app")
 
 
 # ─── Oturum endpoint'leri ─────────────────────────────────────────────────────
