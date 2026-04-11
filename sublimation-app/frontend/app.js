@@ -103,6 +103,11 @@ function resetState() {
   state.designRotations = {};
   state.designDataUrls = {};
   state.piecePreview = {};
+  state.sizeLabel = "";
+  state.sizeLabels = {};
+  state.referenceSize = null;
+  document.getElementById("size-table-wrap").innerHTML = "";
+  document.getElementById("piece-select-grid").innerHTML = "";
 }
 
 function setPLTFile(f) {
@@ -140,14 +145,14 @@ pltUploadBtn.addEventListener("click", async e => {
       warn.classList.add("hidden");
     }
 
-    // Özet satırı
+    // Özet
     const summary = document.getElementById("result-summary");
-    const pTypeCount = data.piece_types_found?.length || 0;
+    const nSizes = data.detected_sizes?.length || 0;
     summary.innerHTML = `
       <div class="result-stat"><span class="stat-num">${data.total_pieces}</span><span class="stat-lbl">Ham Parça</span></div>
-      <div class="result-stat"><span class="stat-num">${pTypeCount}</span><span class="stat-lbl">Tespit Edilen Tip</span></div>
-      <div class="result-stat mode-badge ${state.pltMode === 'flat' ? 'mode-manual' : 'mode-auto'}">
-        ${state.pltMode === 'flat' ? '⚙ Manuel Seçim' : '✓ Otomatik'}
+      <div class="result-stat"><span class="stat-num">${nSizes}</span><span class="stat-lbl">Beden</span></div>
+      <div class="result-stat mode-badge ${state.pltMode === 'graded' ? 'mode-auto' : 'mode-manual'}">
+        ${state.pltMode === 'graded' ? `✓ ${nSizes} Beden Tespit` : '⚙ Tek Beden'}
       </div>`;
 
     pltResult.classList.remove("hidden");
@@ -157,9 +162,13 @@ pltUploadBtn.addEventListener("click", async e => {
     const preview = await apiFetch(`/session/${state.sessionId}/preview`);
     state.allPieces = preview;
 
-    // Step 2: önce bölümü aç, sonra kartları doldur
+    // Step 2
     setStep(2);
-    renderPieceSelectGrid(preview);
+    if (state.pltMode === "graded") {
+      renderSizeTable(preview);
+    } else {
+      renderPieceSelectGrid(preview);
+    }
     document.getElementById("step-2").scrollIntoView({ behavior: "smooth", block: "start" });
 
   } catch (err) {
@@ -172,6 +181,85 @@ pltUploadBtn.addEventListener("click", async e => {
     setTimeout(() => pltProgress.classList.add("hidden"), 600);
   }
 });
+
+// ── Step 2: Beden Tablosu (Graded Mod) ──────────────────────────────────────
+
+function renderSizeTable(preview) {
+  const wrap = document.getElementById("size-table-wrap");
+  document.getElementById("piece-select-grid").innerHTML = "";
+
+  const sizes = Object.keys(preview); // S1, S2, ...
+
+  // Kullanıcıdan beden isimlerini al (varsayılan: S1, S2, ...)
+  state.sizeLabels = {};        // { "S1": "M", "S2": "L", ... }
+  state.referenceSize = sizes[0]; // varsayılan referans = en büyük beden
+
+  const PIECE_ICONS = { front: "👕", back: "🔄", left_sleeve: "💪", right_sleeve: "💪" };
+  const PIECE_NAMES = { front: "Ön", back: "Arka", left_sleeve: "Sol Kol", right_sleeve: "Sağ Kol" };
+
+  let html = `
+    <table class="size-table">
+      <thead>
+        <tr>
+          <th>Referans</th>
+          <th>Beden Adı</th>
+          <th>Parçalar (alan cm²)</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+  sizes.forEach((sKey, idx) => {
+    const group = preview[sKey];
+    const isRef = idx === 0;
+    const piecesHtml = Object.entries(group).map(([ptype, pdata]) => {
+      const cls = ptype.includes("sleeve") ? "sp-sleeve" : ptype === "back" ? "sp-back" : "sp-front";
+      return `<span class="size-piece-badge ${cls}">${PIECE_ICONS[ptype] || "▪"} ${PIECE_NAMES[ptype] || ptype} ${pdata.area_cm2}cm²</span>`;
+    }).join("");
+
+    html += `
+      <tr class="${isRef ? "ref-row" : ""}" id="size-row-${sKey}">
+        <td style="text-align:center">
+          <input type="radio" class="ref-radio" name="ref-size" value="${sKey}" ${isRef ? "checked" : ""}>
+        </td>
+        <td>
+          <input type="text" class="size-name-input" data-key="${sKey}"
+                 value="${sKey}" placeholder="M, L, 42…">
+        </td>
+        <td><div class="size-pieces-row">${piecesHtml}</div></td>
+      </tr>`;
+  });
+
+  html += "</tbody></table>";
+  wrap.innerHTML = html;
+
+  // Beden adı input değişince state güncelle
+  wrap.querySelectorAll(".size-name-input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      state.sizeLabels[inp.dataset.key] = inp.value.trim() || inp.dataset.key;
+    });
+    state.sizeLabels[inp.dataset.key] = inp.value.trim();
+  });
+
+  // Referans seçimi değişince satırı vurgula
+  wrap.querySelectorAll(".ref-radio").forEach(radio => {
+    radio.addEventListener("change", () => {
+      wrap.querySelectorAll("tr").forEach(r => r.classList.remove("ref-row"));
+      document.getElementById(`size-row-${radio.value}`)?.classList.add("ref-row");
+      state.referenceSize = radio.value;
+    });
+  });
+
+  // piecePreview'ı doldur (referans beden parçaları)
+  _updatePiecePreviewFromSize(preview, state.referenceSize);
+}
+
+function _updatePiecePreviewFromSize(preview, sKey) {
+  state.piecePreview = {};
+  const group = preview[sKey] || {};
+  for (const [ptype, pdata] of Object.entries(group)) {
+    state.piecePreview[ptype] = pdata;
+  }
+}
 
 // ── Step 2: Parça Seçim Grid ─────────────────────────────────────────────────
 
@@ -332,6 +420,36 @@ function _buildThumbSVG(pdata, W, H) {
 document.getElementById("confirm-pieces-btn").addEventListener("click", async () => {
   const btn = document.getElementById("confirm-pieces-btn");
 
+  btn.disabled = true;
+  btn.textContent = "Kaydediliyor...";
+
+  // ── Graded Mod ──
+  if (state.pltMode === "graded") {
+    // Referans beden seçimi
+    const refRadio = document.querySelector('input[name="ref-size"]:checked');
+    state.referenceSize = refRadio?.value || Object.keys(state.allPieces)[0];
+
+    // Referans bedenin parçalarını piecePreview'a yaz
+    _updatePiecePreviewFromSize(state.allPieces, state.referenceSize);
+
+    // Aktif parça tipleri: referans bedendeki parçalar
+    state.activePieceTypes = Object.keys(state.allPieces[state.referenceSize] || {});
+
+    // Beden isim eşlemesini kaydet
+    document.querySelectorAll(".size-name-input").forEach(inp => {
+      state.sizeLabels[inp.dataset.key] = inp.value.trim() || inp.dataset.key;
+    });
+
+    btn.disabled = false;
+    btn.innerHTML = `Onayla &amp; Devam <svg viewBox="0 0 20 20" fill="currentColor" width="16"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>`;
+    setStep(3);
+    renderDesignSection(state.activePieceTypes, state.piecePreview);
+    document.getElementById("step-3").scrollIntoView({ behavior: "smooth", block: "start" });
+    toast(`Referans beden: ${state.sizeLabels[state.referenceSize] || state.referenceSize} — ${state.activePieceTypes.length} parça`, "success");
+    return;
+  }
+
+  // ── Flat Mod ──
   // Beden etiketini kaydet
   const sizeLabelEl = document.getElementById("size-label-input");
   state.sizeLabel = (sizeLabelEl?.value.trim() || "BASE").toUpperCase();
@@ -341,11 +459,10 @@ document.getElementById("confirm-pieces-btn").addEventListener("click", async ()
     .filter(([, v]) => v !== "skip");
 
   if (!active.length) {
-    toast("En az bir parça seçin", "error"); return;
+    toast("En az bir parça seçin", "error");
+    btn.disabled = false;
+    return;
   }
-
-  btn.disabled = true;
-  btn.textContent = "Kaydediliyor...";
 
   // Backend'e yeni tip atamalarını gönder (sadece değişenler)
   try {
@@ -630,13 +747,19 @@ async function runGrading() {
       .join(",");
 
     const fd = new FormData();
-    // Beden etiketi: flat modda kullanıcının girdiği etiket (veya BASE), labeled modda tüm bedenler
-    const targetSizes = state.pltMode === "flat"
-      ? (state.sizeLabel || "BASE")
-      : Object.keys(state.allPieces).join(",") || "BASE";
+    let targetSizes;
+    if (state.pltMode === "graded") {
+      // Graded: tüm bedenleri gönder (S1, S2, ...)
+      targetSizes = Object.keys(state.allPieces).join(",");
+    } else {
+      targetSizes = state.sizeLabel || "BASE";
+    }
     fd.append("target_sizes", targetSizes);
     fd.append("bleed_mm", bleed);
     fd.append("dpi", dpi);
+    if (state.pltMode === "graded" && state.referenceSize) {
+      fd.append("reference_size", state.referenceSize);
+    }
     if (state.sizeLabel && state.sizeLabel !== "BASE") fd.append("size_label", state.sizeLabel);
     if (rotStr) fd.append("design_rotations", rotStr);
 

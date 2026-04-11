@@ -242,22 +242,25 @@ async def upload_plt(
         grouped = match_pieces_across_sizes(grouped)
         mode = "labeled"
     else:
-        # Etiketsiz PLT: tüm anlamlı parçaları tek "BASE" bedene koy
-        # Kullanıcı arayüzden hangisi ön/arka/kol olduğunu seçer
-        grouped = _build_flat_group(raw_pieces)
-        mode = "flat"
+        # Etiketsiz PLT: şekil + alan analizi ile tüm bedenleri otomatik tespit et
+        grouped = _detect_all_sizes(raw_pieces)
+        mode = "graded" if len(grouped) > 1 else "flat"
 
     s.plt_path = str(save_path)
     s.parsed_pieces = grouped
-    if mode == "flat":
-        s.reference_size = "BASE"
-
     sizes_found = list(grouped.keys())
+    if sizes_found:
+        s.reference_size = sizes_found[0]  # varsayılan: en büyük beden
+
     warnings = []
-    if mode == "flat":
+    if mode == "graded":
         warnings.append(
-            "PLT'de beden etiketi bulunamadı. "
-            "Aşağıdaki parçalardan hangisinin ön/arka/kol olduğunu seçin."
+            f"PLT'de {len(grouped)} beden tespit edildi (S1=en büyük). "
+            "Referans beden seçip tasarımı yükleyin."
+        )
+    elif mode == "flat":
+        warnings.append(
+            "Tek beden tespit edildi. Parça tiplerini kontrol edip onaylayın."
         )
 
     logger.info(
@@ -277,73 +280,112 @@ async def upload_plt(
     }
 
 
-def _build_flat_group(raw_pieces) -> "Dict[str, Dict[str, Any]]":
+def _detect_all_sizes(raw_pieces) -> "Dict[str, Dict[str, Any]]":
     """
-    Etiketsiz PLT'den anlamlı parçaları seç ve "BASE" beden altında topla.
+    Etiketsiz PLT'den tüm bedenleri otomatik tespit et.
 
-    Filtreleme:
-      - Çok büyük parçalar (kağıt/çerçeve kenarı) atılır
-      - Çok küçük parçalar (çentik/notch) atılır
-      - Kalan parçalar alana göre büyükten küçüğe sıralanır
-      - Aralarında yakın konumda olanlar (üst üste graded nest) çakışma
-        tespiti ile tekilleştirilir
+    Algoritma:
+      1. Border/çerçeve parçasını çıkar (medyan alanın 50x'inden büyük)
+      2. Çok küçük parçaları (notch) çıkar
+      3. Parçaları ŞEKLE göre ayır:
+         - Geniş/kare-ish (oran < 1.55) → gövde parçası (ön/arka)
+         - Uzun/dar (oran ≥ 1.55) → kol parçası (sol/sağ kol)
+      4. Her grubu alana göre sırala; ikişerli eşleştir → beden
+      5. Gövde çifti + kol çifti = bir beden
+      6. "S1" (en büyük) … "SN" (en küçük) olarak adlandır
     """
-    from .models import PatternPiece
-
     if not raw_pieces:
         return {}
 
     areas = sorted(p.area() for p in raw_pieces)
-    # Medyan alanı referans al
     median_area = areas[len(areas) // 2]
 
-    # Çok büyük (border) veya çok küçük (notch) parçaları filtrele
+    # Border ve notch'ları çıkar
     filtered = [
         p for p in raw_pieces
-        if 0.08 * median_area < p.area() < 80 * median_area
+        if 0.05 * median_area < p.area() < 50 * median_area
     ]
     if not filtered:
         filtered = raw_pieces[:]
 
-    # Alana göre büyükten küçüğe sırala
-    filtered.sort(key=lambda p: p.area(), reverse=True)
-
-    # Graded nest dosyalarda aynı parça birden fazla kez çizilmiş olabilir.
-    # Centroid mesafesi ve alan benzerliğine göre tekrar eden parçaları at:
-    # eğer iki parça arasında centroid mesafesi < parça çapının %30'u ise
-    # ve alanları %20 içindeyse → aynı parça, sadece birini tut.
-    unique: list = []
+    # Şekle göre ayır
+    body_pieces: list = []
+    sleeve_pieces: list = []
     for p in filtered:
-        cx, cy = p.centroid()
-        diameter = (p.area() ** 0.5)
-        is_dup = False
-        for kept in unique:
-            kx, ky = kept.centroid()
-            dist = ((cx - kx)**2 + (cy - ky)**2) ** 0.5
-            area_ratio = p.area() / (kept.area() + 1e-9)
-            if dist < diameter * 0.3 and 0.8 < area_ratio < 1.25:
-                is_dup = True
-                break
-        if not is_dup:
-            unique.append(p)
+        bb = p.bounding_box()
+        ratio = max(bb.width, bb.height) / (min(bb.width, bb.height) or 1)
+        if ratio >= 1.55:
+            sleeve_pieces.append(p)
+        else:
+            body_pieces.append(p)
 
-    # İlk 12 parça ile sınırla (ekran sığdırmak için)
-    unique = unique[:12]
+    # Kol yoksa gövdedeki en küçük çifti kol kabul et
+    if not sleeve_pieces and len(body_pieces) >= 4:
+        body_pieces.sort(key=lambda p: p.area(), reverse=True)
+        sleeve_pieces = body_pieces[-2:]
+        body_pieces   = body_pieces[:-2]
 
-    # Hepsini "BASE" bedeni altında piece_1, piece_2, ... olarak isimlendrir
-    # Büyük parçalar önce → front, back; küçükler → sleeve
+    # Her grubu alana göre sırala (büyükten küçüğe)
+    body_pieces.sort(key=lambda p: p.area(), reverse=True)
+    sleeve_pieces.sort(key=lambda p: p.area(), reverse=True)
+
+    # Gövde çiftleri → her 2 parça = 1 bedenin ön+arka
+    n_body_sizes   = len(body_pieces) // 2
+    # Kol çiftleri → her 2 parça = 1 bedenin sol+sağ kol
+    n_sleeve_sizes = len(sleeve_pieces) // 2
+
+    n_sizes = max(n_body_sizes, n_sleeve_sizes)
+    if n_sizes == 0:
+        # Fallback: tek BASE grubu
+        return _build_flat_group_fallback(filtered)
+
+    result: Dict[str, Any] = {}
+    for si in range(n_sizes):
+        size_name = f"S{si + 1}"
+        group: Dict[str, Any] = {}
+
+        bi = si * 2  # gövde index
+        sl = si * 2  # kol index
+
+        if bi < len(body_pieces):
+            p = body_pieces[bi]
+            p.piece_type = "front"
+            p.size = size_name
+            group["front"] = p
+        if bi + 1 < len(body_pieces):
+            p = body_pieces[bi + 1]
+            p.piece_type = "back"
+            p.size = size_name
+            group["back"] = p
+        if sl < len(sleeve_pieces):
+            p = sleeve_pieces[sl]
+            p.piece_type = "left_sleeve"
+            p.size = size_name
+            group["left_sleeve"] = p
+        if sl + 1 < len(sleeve_pieces):
+            p = sleeve_pieces[sl + 1]
+            p.piece_type = "right_sleeve"
+            p.size = size_name
+            group["right_sleeve"] = p
+
+        if group:
+            result[size_name] = group
+
+    return result
+
+
+def _build_flat_group_fallback(filtered_pieces) -> "Dict[str, Dict[str, Any]]":
+    """Beden tespiti başarısız olursa tek BASE grubu döner (eski davranış)."""
+    filtered_pieces.sort(key=lambda p: p.area(), reverse=True)
     type_hints = ["front", "back", "left_sleeve", "right_sleeve",
                   "front_2", "back_2", "sleeve_3", "sleeve_4",
                   "piece_5", "piece_6", "piece_7", "piece_8"]
-
-    group: Dict[str, PatternPiece] = {}
-    for i, p in enumerate(unique):
+    group: Dict[str, Any] = {}
+    for i, p in enumerate(filtered_pieces[:12]):
         key = type_hints[i] if i < len(type_hints) else f"piece_{i+1}"
-        # Orijinal label'ı koru, piece_type'ı güncelle
         p.piece_type = key
         p.size = "BASE"
         group[key] = p
-
     return {"BASE": group}
 
 
@@ -517,18 +559,28 @@ async def run_grading(
             except ValueError:
                 pass
 
-    # BASE modu: tek beden, grading yok
-    is_flat = list(s.parsed_pieces.keys()) == ["BASE"] or "BASE" in s.parsed_pieces
-    if is_flat:
-        # Kullanıcı beden etiketi girdiyse (M, L, 42 vs.) BASE'i yeniden adlandır
+    # Beden tespiti: çoklu beden varsa passthrough, tek BASE ise flat mod
+    has_base = "BASE" in s.parsed_pieces
+    is_multi = len(s.parsed_pieces) > 1
+
+    if has_base and not is_multi:
+        # Tek BASE: kullanıcı beden etiketi girdiyse yeniden adlandır
         label = size_label.strip().upper() if size_label.strip() else "BASE"
-        if label != "BASE" and "BASE" in s.parsed_pieces:
+        if label != "BASE":
             s.parsed_pieces[label] = s.parsed_pieces.pop("BASE")
             s.reference_size = label
         else:
             s.reference_size = "BASE"
             label = "BASE"
         requested_sizes = [label]
+    elif is_multi:
+        # Çoklu beden (S1…SN veya labeled): tüm bedenleri işle
+        # requested_sizes zaten kullanıcıdan geliyor; yoksa tüm bedenler
+        if not requested_sizes or requested_sizes == ["BASE"]:
+            requested_sizes = list(s.parsed_pieces.keys())
+        # Referans beden: requested_sizes içindeki ilk
+        if requested_sizes[0] in s.parsed_pieces:
+            s.reference_size = requested_sizes[0]
 
     # Grading motoru
     engine = GradingEngine(

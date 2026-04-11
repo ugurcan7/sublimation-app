@@ -105,26 +105,26 @@
       </div>
     </section>
 
-    <!-- Adım 2: Parça Seçimi -->
+    <!-- Adım 2: Beden + Parça Seçimi -->
     <section class="card disabled" id="step-2" aria-disabled="true">
       <div class="card-header">
         <span class="step-badge">2</span>
-        <h2>Parça Seçimi</h2>
+        <h2>Beden &amp; Parça Seçimi</h2>
       </div>
       <p class="card-desc" id="step2-desc">
-        PLT'den bulunan parçalar aşağıda. Her parçanın ne olduğunu seçin:
-        <strong>Ön Panel, Arka Panel, Sol Kol, Sağ Kol</strong> veya kullanmıyorsanız <strong>Atla</strong>.
+        PLT'den tespit edilen bedenler aşağıda. Her bedene isim verin (M, L, 42 vs.),
+        <strong>referans beden</strong> seçin — tasarım o bedene göre yerleştirilir,
+        diğer bedenler otomatik üretilir.
       </p>
 
-      <!-- Parça kartları grid — JS tarafından doldurulur -->
+      <!-- Beden tablosu (graded mod) — JS tarafından doldurulur -->
+      <div id="size-table-wrap"></div>
+
+      <!-- Tek parça modu (flat) — JS tarafından doldurulur -->
       <div class="piece-select-grid" id="piece-select-grid"></div>
 
-      <!-- Ayarlar (bleed, dpi, beden) -->
+      <!-- Ayarlar (bleed, dpi) -->
       <div class="option-row option-row-top" id="output-options">
-        <label class="option-label">
-          Beden etiketi:
-          <input type="text" id="size-label-input" class="select-field" placeholder="M, L, XL, 42…" style="width:90px">
-        </label>
         <label class="option-label">
           Kesim payı (bleed):
           <select id="bleed-select" class="select-field">
@@ -142,7 +142,7 @@
           </select>
         </label>
         <button class="btn-primary" id="confirm-pieces-btn" style="margin-left:auto">
-          Parçaları Onayla
+          Onayla &amp; Devam
           <svg viewBox="0 0 20 20" fill="currentColor" width="16"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
         </button>
       </div>

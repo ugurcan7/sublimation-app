@@ -1238,6 +1238,25 @@ footer {
   color: var(--green);
 }
 
+/* ── Size Table (Graded Mode) ── */
+.size-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: .85rem; }
+.size-table th { background: var(--gray-50); color: var(--gray-500); font-weight: 600;
+  text-align: left; padding: .5rem .75rem; border-bottom: 2px solid var(--gray-150); }
+.size-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+.size-table tr:hover td { background: var(--gray-50); }
+.size-table tr.ref-row td { background: #eff6ff; }
+.size-name-input { width: 80px; border: 1.5px solid var(--gray-200); border-radius: 7px;
+  padding: .25rem .5rem; font-size: .82rem; color: var(--gray-700); }
+.size-name-input:focus { outline: none; border-color: var(--blue); }
+.ref-radio { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+.size-pieces-row { display: flex; gap: .4rem; align-items: center; }
+.size-piece-badge { display: inline-flex; align-items: center; gap: .25rem;
+  background: var(--gray-100); border-radius: 6px; padding: .15rem .45rem;
+  font-size: .75rem; color: var(--gray-600); }
+.size-piece-badge.sp-front  { background: #dbeafe; color: #1d4ed8; }
+.size-piece-badge.sp-back   { background: #dcfce7; color: #15803d; }
+.size-piece-badge.sp-sleeve { background: #fef9c3; color: #a16207; }
+
 /* ── Piece Select Grid (Step 2) ── */
 .piece-select-grid {
   display: grid;
