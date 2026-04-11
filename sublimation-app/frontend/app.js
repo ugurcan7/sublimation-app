@@ -196,8 +196,36 @@ const ASSIGN_OPTIONS = [
   { value: "back_2",       label: "🔄 Arka Panel 2"},
 ];
 
-// İlk 6 parçaya varsayılan tip ata — sonrakiler "atla"
-const DEFAULT_ASSIGNS = ["front", "back", "left_sleeve", "right_sleeve", "front_2", "back_2"];
+// Parça şekline göre akıllı tip tahmini
+// Kollar tipik olarak dikdörtgen ve uzun (ratio > 1.5), gövde parçaları daha kare
+function _smartAssignTypes(pieces) {
+  // Her parça için uzunluk/genişlik oranını hesapla
+  const withRatio = pieces.map((p, idx) => {
+    const bb = p.pdata.bbox;
+    const ratio = bb ? Math.max(bb.w, bb.h) / (Math.min(bb.w, bb.h) || 1) : 1;
+    return { ...p, idx, ratio };
+  });
+
+  // Kol adayı: oran > 1.5 VEYA alan küçük ama uzunsa
+  // Gövde adayı: oran <= 1.5 (daha kareye yakın)
+  const body   = withRatio.filter(p => p.ratio <= 1.5).sort((a, b) => (b.pdata.area_cm2 || 0) - (a.pdata.area_cm2 || 0));
+  const sleeve = withRatio.filter(p => p.ratio >  1.5).sort((a, b) => (b.pdata.area_cm2 || 0) - (a.pdata.area_cm2 || 0));
+
+  // Kol yoksa en küçük iki gövde parçasını kol say
+  if (sleeve.length === 0 && body.length >= 4) {
+    const candidates = body.splice(body.length - 2, 2);
+    sleeve.push(...candidates);
+  }
+
+  const assign = {};
+  const bodyTypes   = ["front", "back", "front_2", "back_2"];
+  const sleeveTypes = ["left_sleeve", "right_sleeve"];
+
+  body.forEach((p, i)   => { assign[p.idx] = bodyTypes[i]   || "skip"; });
+  sleeve.forEach((p, i) => { assign[p.idx] = sleeveTypes[i] || "skip"; });
+
+  return assign; // { idx → type }
+}
 
 function renderPieceSelectGrid(preview) {
   const grid = document.getElementById("piece-select-grid");
@@ -220,10 +248,12 @@ function renderPieceSelectGrid(preview) {
   // Alana göre sırala (büyük parçalar önce)
   allPieces.sort((a, b) => (b.pdata.area_cm2 || 0) - (a.pdata.area_cm2 || 0));
 
+  // Şekil + alan bazlı akıllı tip tahmini
+  const smartAssign = _smartAssignTypes(allPieces);
+
   allPieces.forEach(({ size, ptype, pdata }, idx) => {
     const key = `${size}__${ptype}`;
-    // Varsayılan atama: ilk 6 parçaya tip ata, kalanlar atla
-    const defaultAssign = DEFAULT_ASSIGNS[idx] || "skip";
+    const defaultAssign = smartAssign[idx] || "skip";
     state.pieceAssignments[key] = defaultAssign;
 
     const dimsText = pdata.bbox
