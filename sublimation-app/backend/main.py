@@ -347,15 +347,14 @@ def _detect_all_sizes(raw_pieces) -> "Dict[str, Dict[str, Any]]":
         bi = si * 2  # gövde index
         sl = si * 2  # kol index
 
-        # Çift içinde: bi = küçük (arka), bi+1 = büyük (ön)
-        # Ön panel forma içinde tipik olarak arka panelden büyüktür
-        if bi + 1 < len(body_pieces):
-            p = body_pieces[bi + 1]
+        # Çift içinde: bi = küçük (ön), bi+1 = büyük (arka)
+        if bi < len(body_pieces):
+            p = body_pieces[bi]
             p.piece_type = "front"
             p.size = size_name
             group["front"] = p
-        if bi < len(body_pieces):
-            p = body_pieces[bi]
+        if bi + 1 < len(body_pieces):
+            p = body_pieces[bi + 1]
             p.piece_type = "back"
             p.size = size_name
             group["back"] = p
