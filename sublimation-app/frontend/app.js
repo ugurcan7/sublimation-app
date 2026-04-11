@@ -572,13 +572,31 @@ function renderDesignSection(types, previewData) {
   const step3Desc  = document.getElementById("step3-desc");
 
   if (state.pltMode === "graded") {
-    const refLabel = state.sizeLabels?.[state.referenceSize] || state.referenceSize || "?";
     const totalSizes = Object.keys(state.allPieces).length;
 
-    // Banner
-    const bannerText = document.getElementById("ref-size-banner-text");
-    if (bannerText) bannerText.innerHTML =
-      `<strong>Referans Beden: ${refLabel}</strong> parçaları için tasarım yükleyin — diğer <strong>${totalSizes - 1} beden</strong> otomatik ölçeklendirilecek`;
+    // Dropdown: tüm beden seçenekleri
+    const sel = document.getElementById("ref-size-select-step3");
+    if (sel) {
+      sel.innerHTML = Object.keys(state.allPieces).map(sKey => {
+        const lbl = state.sizeLabels?.[sKey] || sKey;
+        return `<option value="${sKey}" ${sKey === state.referenceSize ? "selected" : ""}>${lbl}</option>`;
+      }).join("");
+
+      sel.onchange = () => {
+        state.referenceSize = sel.value;
+        _updatePiecePreviewFromSize(state.allPieces, state.referenceSize);
+        const hint = document.getElementById("ref-size-hint-text");
+        if (hint) hint.textContent =
+          `${state.sizeLabels?.[state.referenceSize] || state.referenceSize} — diğer ${totalSizes - 1} beden otomatik ölçeklendirilecek`;
+        // Parça önizlemelerini de güncelle
+        renderDesignSection(Object.keys(state.allPieces[state.referenceSize] || {}), state.piecePreview);
+      };
+    }
+
+    const hint = document.getElementById("ref-size-hint-text");
+    if (hint) hint.textContent =
+      `${state.sizeLabels?.[state.referenceSize] || state.referenceSize} — diğer ${totalSizes - 1} beden otomatik ölçeklendirilecek`;
+
     banner?.classList.remove("hidden");
 
     // Adapt butonu
@@ -591,19 +609,14 @@ function renderDesignSection(types, previewData) {
 
       // Butona tıklayınca direkt grading başlat
       const adaptBtn = document.getElementById("adapt-btn");
-      adaptBtn?.removeEventListener("click", runGrading); // önceki listener temizle
+      adaptBtn?.removeEventListener("click", runGrading);
       adaptBtn?.addEventListener("click", runGrading);
     }
 
     // Step 3 açıklama güncelle
     if (step3Desc) step3Desc.innerHTML =
-      `<strong>${refLabel}</strong> bedeni için tasarım yükleyin. ` +
+      `Seçtiğiniz bedene ait parçalar için tasarım yükleyin. ` +
       `<em>Tüm Bedenlere Uyarla</em> butonu ile tasarım ${totalSizes} bedene otomatik ölçeklenir.`;
-
-    // "Bedeni değiştir" butonu
-    document.getElementById("btn-change-ref")?.addEventListener("click", () => {
-      document.getElementById("step-2").scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   } else {
     banner?.classList.add("hidden");
     adaptRow?.classList.add("hidden");

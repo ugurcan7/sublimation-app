@@ -1436,18 +1436,20 @@ footer {
   background: var(--blue);
   flex-shrink: 0;
 }
-.btn-change-ref {
-  font-size: .78rem;
-  padding: .3rem .75rem;
-  border-radius: 6px;
+.ref-size-select {
+  font-size: .88rem;
+  padding: .35rem .65rem;
+  border-radius: 7px;
   border: 1.5px solid #93c5fd;
   background: white;
-  color: var(--blue);
+  color: var(--gray-800);
   cursor: pointer;
-  white-space: nowrap;
-  transition: background .15s;
+  min-width: 120px;
 }
-.btn-change-ref:hover { background: #eff6ff; }
+.ref-size-hint {
+  font-size: .8rem;
+  color: var(--gray-500);
+}
 
 /* ── Tüm bedenlere uyarla butonu ── */
 .adapt-btn-row {
