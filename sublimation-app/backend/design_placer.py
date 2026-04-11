@@ -67,10 +67,16 @@ class SVGDesignPlacer:
 
         # Bleed dahil padding
         pad = self.bleed
-        vb_x = bb.x_min - pad
-        vb_y = bb.y_min - pad
-        vb_w = bb.width + 2 * pad
-        vb_h = bb.height + 2 * pad
+        # ViewBox: görsel kare (max(w,h)) + parça sınırlarını kapsayacak şekilde genişlet
+        piece_cx = (bb.x_min + bb.x_max) / 2
+        piece_cy = (bb.y_min + bb.y_max) / 2
+        d_half = (max(bb.width, bb.height) + 2 * pad) / 2
+        vb_x = min(bb.x_min - pad, piece_cx - d_half)
+        vb_y = min(bb.y_min - pad, piece_cy - d_half)
+        vb_x2 = max(bb.x_max + pad, piece_cx + d_half)
+        vb_y2 = max(bb.y_max + pad, piece_cy + d_half)
+        vb_w = vb_x2 - vb_x
+        vb_h = vb_y2 - vb_y
 
         # SVG boyutları (pixel cinsinden)
         svg_w_px = vb_w * PX_PER_MM
@@ -231,11 +237,16 @@ class SVGDesignPlacer:
         n_cols = min(pieces_per_row, n)
         n_rows = (n + n_cols - 1) // n_cols
 
-        # Her parçanın boyutunu hesapla
+        # Her parçanın boyutunu hesapla (rotation 90/270'te swap)
         piece_dims = []
         for ptype, gp in piece_list:
             bb = _pts_bounding_box(gp.points)
-            piece_dims.append((bb.width + 2 * self.bleed, bb.height + 2 * self.bleed))
+            rot = rotations.get(ptype, 0)
+            pw = bb.width + 2 * self.bleed
+            ph = bb.height + 2 * self.bleed
+            if rot in (90, 270):
+                pw, ph = ph, pw   # Görsel döndürülmüş → layout boyutlarını swap et
+            piece_dims.append((pw, ph))
 
         # Grid düzeni
         col_widths = []
@@ -374,27 +385,25 @@ def _image_lines(
 ) -> List[str]:
     """
     SVG <image> elementini döndürme destekli üretir.
-    clip_id'yi <g> üzerinde uygular, böylece parça dışı kesilir.
-    rotation 90/270 iken genişlik/yükseklik yer değiştirir (yatay→dikey).
+
+    Her rotasyon için parçayı tam kapsayan kare kullanır (max(w,h)×max(w,h)).
+    Bu sayede görsel viewBox dışına çıkmaz ve rotasyon sonrası kaybolmaz.
     """
     cx = x + w / 2
     cy = y + h / 2
 
-    if rotation in (90, 270):
-        rw, rh = h, w
-    else:
-        rw, rh = w, h
-
-    rx = cx - rw / 2
-    ry = cy - rh / 2
+    # Her rotasyonda parçayı tamamen kaplayacak kare
+    d = max(w, h)
+    ix = cx - d / 2
+    iy = cy - d / 2
 
     transform_attr = f' transform="rotate({rotation}, {cx:.4f}, {cy:.4f})"' if rotation else ''
 
     return [
         f'  <g clip-path="url(#{clip_id})">',
         f'    <image xlink:href="data:{mime};base64,{img_data}"',
-        f'      x="{rx:.4f}" y="{ry:.4f}"',
-        f'      width="{rw:.4f}" height="{rh:.4f}"',
+        f'      x="{ix:.4f}" y="{iy:.4f}"',
+        f'      width="{d:.4f}" height="{d:.4f}"',
         f'      preserveAspectRatio="xMidYMid slice"{transform_attr} />',
         f'  </g>',
     ]

@@ -186,6 +186,27 @@ pltUploadBtn.addEventListener("click", async e => {
 
 // ── Step 2: Beden Tablosu (Graded Mod) ──────────────────────────────────────
 
+/** Beden sayısına göre standart seri öner */
+function _defaultSizeNames(n) {
+  const series = {
+    1:  ["M"],
+    2:  ["M","L"],
+    3:  ["S","M","L"],
+    4:  ["S","M","L","XL"],
+    5:  ["XS","S","M","L","XL"],
+    6:  ["XS","S","M","L","XL","XXL"],
+    7:  ["XXS","XS","S","M","L","XL","XXL"],
+    8:  ["XXS","XS","S","M","L","XL","XXL","3XL"],
+    9:  ["XXS","XS","S","M","L","XL","XXL","3XL","4XL"],
+    10: ["32","34","36","38","40","42","44","46","48","50"],
+    11: ["32","34","36","38","40","42","44","46","48","50","52"],
+    12: ["32","34","36","38","40","42","44","46","48","50","52","54"],
+    13: ["34","36","38","40","42","44","46","48","50","52","54","56","58"],
+    14: ["32","34","36","38","40","42","44","46","48","50","52","54","56","58"],
+  };
+  return series[n] || Array.from({length: n}, (_, i) => String(i + 1));
+}
+
 function renderSizeTable(preview) {
   const wrap = document.getElementById("size-table-wrap");
   document.getElementById("piece-select-grid").innerHTML = "";
@@ -198,9 +219,10 @@ function renderSizeTable(preview) {
   const PIECE_ICONS = { front: "👕", back: "🔄", left_sleeve: "💪", right_sleeve: "💪" };
   const PIECE_NAMES = { front: "Ön", back: "Arka", left_sleeve: "Sol Kol", right_sleeve: "Sağ Kol" };
 
-  // PLT'den gerçek isimler geldiyse (etiketli PLT), internal key = görünen isim
-  // Gelmemişse (etiketsiz), input boş — kullanıcı girer
+  // PLT'den gerçek isimler geldiyse → sKey zaten gerçek isim
+  // Gelmemişse → standart seri öner (düzenlenebilir)
   const fromPlt = state.sizeNamesFromPlt;
+  const defaults = fromPlt ? null : _defaultSizeNames(sizes.length);
 
   let html = `
     <table class="size-table">
@@ -219,8 +241,8 @@ function renderSizeTable(preview) {
 
     // Görüntülenecek isim:
     //   - PLT'den geldiyse → sKey zaten gerçek isim (M, L, 38, ...)
-    //   - Gelmediyse → boş bırak, placeholder göster
-    const displayValue = fromPlt ? sKey : "";
+    //   - Gelmediyse → standart seri öner (düzenlenebilir)
+    const displayValue = fromPlt ? sKey : (defaults?.[idx] ?? "");
     const placeholder  = fromPlt ? "" : "34, 36, M, L…";
 
     const piecesHtml = Object.entries(group).map(([ptype, pdata]) => {
@@ -534,10 +556,14 @@ function _thumbSvgContent(type, pdata, imgSrc, deg) {
   const cx = W/2, cy = H/2;
   let imgEl = "";
   if (imgSrc) {
-    const tr = deg ? ` transform="rotate(${deg} ${cx} ${cy})"` : "";
+    // Kare görsel: her rotasyonda parçayı tamamen kapsar, viewBox dışına çıkmaz
+    const d   = Math.max(dw, dh);
+    const ix  = (cx - d/2).toFixed(1);
+    const iy  = (cy - d/2).toFixed(1);
+    const tr  = deg ? ` transform="rotate(${deg} ${cx} ${cy})"` : "";
     imgEl = `<g clip-path="url(#${clipId})">
-      <image href="${imgSrc}" x="${ox.toFixed(1)}" y="${oy.toFixed(1)}"
-             width="${dw.toFixed(1)}" height="${dh.toFixed(1)}"
+      <image href="${imgSrc}" x="${ix}" y="${iy}"
+             width="${d.toFixed(1)}" height="${d.toFixed(1)}"
              preserveAspectRatio="xMidYMid slice"${tr}/>
     </g>`;
   }
