@@ -152,16 +152,6 @@ class SVGDesignPlacer:
                 f'fill="none" stroke="#000000" stroke-width="0.3" />'
             )
 
-        # Beden / parça tipi etiketi (debugging)
-        cx = float(np.mean(pts[:, 0]))
-        cy = float(np.mean(pts[:, 1]))
-        label = f"{piece.size} {piece.piece_type.replace('_', ' ').upper()}"
-        lines.append(
-            f'  <text x="{cx:.2f}" y="{cy:.2f}" '
-            f'font-size="8" text-anchor="middle" fill="rgba(0,0,0,0.3)" '
-            f'font-family="sans-serif">{label}</text>'
-        )
-
         lines.append("</svg>")
         svg_content = "\n".join(lines)
 
@@ -352,16 +342,6 @@ class SVGDesignPlacer:
             lines.append(
                 f'  <polygon points="{poly_str}" fill="none" '
                 f'stroke="#000000" stroke-width="0.5" />'
-            )
-
-            # Etiket
-            cx = float(shifted_pts[:, 0].mean())
-            cy = float(shifted_pts[:, 1].mean())
-            label = f"{size} / {ptype.replace('_', ' ').upper()}"
-            lines.append(
-                f'  <text x="{cx:.2f}" y="{cy:.2f}" font-size="6" '
-                f'text-anchor="middle" fill="rgba(0,0,0,0.4)" '
-                f'font-family="sans-serif">{label}</text>'
             )
 
         lines.append("</svg>")
