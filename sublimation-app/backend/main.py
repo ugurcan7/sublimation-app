@@ -273,6 +273,7 @@ async def upload_plt(
     return {
         "total_pieces": len(raw_pieces),
         "detected_sizes": sizes_found,
+        "size_names_from_plt": has_labels,   # True → adlar PLT'den geldi, doğrudan kullan
         "piece_types_found": s.detected_piece_types(),
         "labeled": has_labels,
         "mode": mode,

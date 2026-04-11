@@ -106,6 +106,7 @@ function resetState() {
   state.sizeLabel = "";
   state.sizeLabels = {};
   state.referenceSize = null;
+  state.sizeNamesFromPlt = false;
   document.getElementById("size-table-wrap").innerHTML = "";
   document.getElementById("piece-select-grid").innerHTML = "";
 }
@@ -134,6 +135,7 @@ pltUploadBtn.addEventListener("click", async e => {
     pltFill.style.width = "80%";
 
     state.pltMode = data.mode || "flat";
+    state.sizeNamesFromPlt = data.size_names_from_plt || false;  // PLT'den gerçek isim geldi mi?
     toast(`PLT analiz edildi — ${data.total_pieces} ham parça`, "success");
 
     // Uyarılar
@@ -188,21 +190,24 @@ function renderSizeTable(preview) {
   const wrap = document.getElementById("size-table-wrap");
   document.getElementById("piece-select-grid").innerHTML = "";
 
-  const sizes = Object.keys(preview); // S1, S2, ...
+  const sizes = Object.keys(preview); // S1, S2, ... veya M, L, XL, ...
 
-  // Kullanıcıdan beden isimlerini al (varsayılan: S1, S2, ...)
-  state.sizeLabels = {};        // { "S1": "M", "S2": "L", ... }
-  state.referenceSize = sizes[0]; // varsayılan referans = en büyük beden
+  state.sizeLabels = {};
+  state.referenceSize = sizes[0];
 
   const PIECE_ICONS = { front: "👕", back: "🔄", left_sleeve: "💪", right_sleeve: "💪" };
   const PIECE_NAMES = { front: "Ön", back: "Arka", left_sleeve: "Sol Kol", right_sleeve: "Sağ Kol" };
+
+  // PLT'den gerçek isimler geldiyse (etiketli PLT), internal key = görünen isim
+  // Gelmemişse (etiketsiz), input boş — kullanıcı girer
+  const fromPlt = state.sizeNamesFromPlt;
 
   let html = `
     <table class="size-table">
       <thead>
         <tr>
           <th>Referans</th>
-          <th>Beden Adı</th>
+          <th>Beden Adı ${fromPlt ? '<span class="plt-tag">PLT\'den</span>' : ''}</th>
           <th>Parçalar (alan cm²)</th>
         </tr>
       </thead>
@@ -211,6 +216,13 @@ function renderSizeTable(preview) {
   sizes.forEach((sKey, idx) => {
     const group = preview[sKey];
     const isRef = idx === 0;
+
+    // Görüntülenecek isim:
+    //   - PLT'den geldiyse → sKey zaten gerçek isim (M, L, 38, ...)
+    //   - Gelmediyse → boş bırak, placeholder göster
+    const displayValue = fromPlt ? sKey : "";
+    const placeholder  = fromPlt ? "" : "34, 36, M, L…";
+
     const piecesHtml = Object.entries(group).map(([ptype, pdata]) => {
       const cls = ptype.includes("sleeve") ? "sp-sleeve" : ptype === "back" ? "sp-back" : "sp-front";
       return `<span class="size-piece-badge ${cls}">${PIECE_ICONS[ptype] || "▪"} ${PIECE_NAMES[ptype] || ptype} ${pdata.area_cm2}cm²</span>`;
@@ -223,10 +235,13 @@ function renderSizeTable(preview) {
         </td>
         <td>
           <input type="text" class="size-name-input" data-key="${sKey}"
-                 value="${sKey}" placeholder="M, L, 42…">
+                 value="${displayValue}" placeholder="${placeholder}">
         </td>
         <td><div class="size-pieces-row">${piecesHtml}</div></td>
       </tr>`;
+
+    // sizeLabels'a başlangıç değeri yaz
+    state.sizeLabels[sKey] = displayValue;
   });
 
   html += "</tbody></table>";
@@ -235,9 +250,8 @@ function renderSizeTable(preview) {
   // Beden adı input değişince state güncelle
   wrap.querySelectorAll(".size-name-input").forEach(inp => {
     inp.addEventListener("input", () => {
-      state.sizeLabels[inp.dataset.key] = inp.value.trim() || inp.dataset.key;
+      state.sizeLabels[inp.dataset.key] = inp.value.trim();
     });
-    state.sizeLabels[inp.dataset.key] = inp.value.trim();
   });
 
   // Referans seçimi değişince satırı vurgula
@@ -249,7 +263,6 @@ function renderSizeTable(preview) {
     });
   });
 
-  // piecePreview'ı doldur (referans beden parçaları)
   _updatePiecePreviewFromSize(preview, state.referenceSize);
 }
 

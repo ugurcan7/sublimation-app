@@ -1479,3 +1479,15 @@ footer {
   font-size: .82rem;
   color: var(--gray-500);
 }
+
+/* ── PLT'den etiketi ── */
+.plt-tag {
+  font-size: .7rem;
+  font-weight: 600;
+  background: #dcfce7;
+  color: #15803d;
+  border-radius: 5px;
+  padding: .1rem .4rem;
+  margin-left: .4rem;
+  vertical-align: middle;
+}
