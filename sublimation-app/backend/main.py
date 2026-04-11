@@ -485,7 +485,8 @@ async def run_grading(
     target_sizes: str = Form(default="S,M,L,XL,XXL"),
     bleed_mm: float = Form(default=3.0),
     dpi: int = Form(default=300),
-    design_rotations: str = Form(default=""),  # "front:90,back:0,left_sleeve:90"
+    design_rotations: str = Form(default=""),
+    size_label: str = Form(default=""),  # flat modda çıktı için beden etiketi (M, L, 42 vs.)
 ):
     """
     Grading çalıştır + tüm bedenlere desen yerleştir + SVG üret.
@@ -519,8 +520,15 @@ async def run_grading(
     # BASE modu: tek beden, grading yok
     is_flat = list(s.parsed_pieces.keys()) == ["BASE"] or "BASE" in s.parsed_pieces
     if is_flat:
-        requested_sizes = ["BASE"]
-        s.reference_size = "BASE"
+        # Kullanıcı beden etiketi girdiyse (M, L, 42 vs.) BASE'i yeniden adlandır
+        label = size_label.strip().upper() if size_label.strip() else "BASE"
+        if label != "BASE" and "BASE" in s.parsed_pieces:
+            s.parsed_pieces[label] = s.parsed_pieces.pop("BASE")
+            s.reference_size = label
+        else:
+            s.reference_size = "BASE"
+            label = "BASE"
+        requested_sizes = [label]
 
     # Grading motoru
     engine = GradingEngine(

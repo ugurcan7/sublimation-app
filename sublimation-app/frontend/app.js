@@ -7,12 +7,11 @@ const state = {
   sessionId:       null,
   pltFile:         null,
   pltMode:         "flat",       // "flat" | "labeled"
-  allPieces:       {},           // { size: { piece_type: pieceData } } — önizleme için
-  // Kullanıcının seçimleri: { original_key: assigned_type }
-  // assigned_type: "front"|"back"|"left_sleeve"|"right_sleeve"|"skip"
+  sizeLabel:       "",           // kullanıcının girdiği beden etiketi (M, L, 42 vs.)
+  allPieces:       {},
   pieceAssignments: {},
-  activePieceTypes: [],          // atlanmayanlar, sıraya göre
-  designFiles:     {},           // { piece_type: File }
+  activePieceTypes: [],
+  designFiles:     {},
   designRotations: {},
   designDataUrls:  {},
   piecePreview:    {},
@@ -188,12 +187,17 @@ const PIECE_LABELS = {
 };
 
 const ASSIGN_OPTIONS = [
-  { value: "skip",         label: "— Atla —"      },
-  { value: "front",        label: "👕 Ön Panel"   },
-  { value: "back",         label: "🔄 Arka Panel" },
-  { value: "left_sleeve",  label: "💪 Sol Kol"    },
-  { value: "right_sleeve", label: "💪 Sağ Kol"    },
+  { value: "skip",         label: "— Atla —"       },
+  { value: "front",        label: "👕 Ön Panel"    },
+  { value: "back",         label: "🔄 Arka Panel"  },
+  { value: "left_sleeve",  label: "💪 Sol Kol"     },
+  { value: "right_sleeve", label: "💪 Sağ Kol"     },
+  { value: "front_2",      label: "👕 Ön Panel 2"  },
+  { value: "back_2",       label: "🔄 Arka Panel 2"},
 ];
+
+// İlk 6 parçaya varsayılan tip ata — sonrakiler "atla"
+const DEFAULT_ASSIGNS = ["front", "back", "left_sleeve", "right_sleeve", "front_2", "back_2"];
 
 function renderPieceSelectGrid(preview) {
   const grid = document.getElementById("piece-select-grid");
@@ -218,8 +222,8 @@ function renderPieceSelectGrid(preview) {
 
   allPieces.forEach(({ size, ptype, pdata }, idx) => {
     const key = `${size}__${ptype}`;
-    // Varsayılan atama: ilk 4 parçaya ön/arka/sol kol/sağ kol
-    const defaultAssign = ["front", "back", "left_sleeve", "right_sleeve"][idx] || "skip";
+    // Varsayılan atama: ilk 6 parçaya tip ata, kalanlar atla
+    const defaultAssign = DEFAULT_ASSIGNS[idx] || "skip";
     state.pieceAssignments[key] = defaultAssign;
 
     const dimsText = pdata.bbox
@@ -297,6 +301,10 @@ function _buildThumbSVG(pdata, W, H) {
 // Parçaları onayla butonu
 document.getElementById("confirm-pieces-btn").addEventListener("click", async () => {
   const btn = document.getElementById("confirm-pieces-btn");
+
+  // Beden etiketini kaydet
+  const sizeLabelEl = document.getElementById("size-label-input");
+  state.sizeLabel = (sizeLabelEl?.value.trim() || "BASE").toUpperCase();
 
   // Atlanmayan parçaların listesi
   const active = Object.entries(state.pieceAssignments)
@@ -592,12 +600,14 @@ async function runGrading() {
       .join(",");
 
     const fd = new FormData();
-    // BASE modda target_sizes = "BASE", labeled modda tüm tespit edilen bedenler
-    const targetSizes = state.pltMode === "flat" ? "BASE" :
-      Object.keys(state.allPieces).join(",") || "BASE";
+    // Beden etiketi: flat modda kullanıcının girdiği etiket (veya BASE), labeled modda tüm bedenler
+    const targetSizes = state.pltMode === "flat"
+      ? (state.sizeLabel || "BASE")
+      : Object.keys(state.allPieces).join(",") || "BASE";
     fd.append("target_sizes", targetSizes);
     fd.append("bleed_mm", bleed);
     fd.append("dpi", dpi);
+    if (state.sizeLabel && state.sizeLabel !== "BASE") fd.append("size_label", state.sizeLabel);
     if (rotStr) fd.append("design_rotations", rotStr);
 
     const data = await apiFetch(`/session/${state.sessionId}/grade`, { method:"POST", body:fd });

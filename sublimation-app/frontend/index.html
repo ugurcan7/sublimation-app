@@ -119,8 +119,12 @@
       <!-- Parça kartları grid — JS tarafından doldurulur -->
       <div class="piece-select-grid" id="piece-select-grid"></div>
 
-      <!-- Ayarlar (bleed, dpi) -->
+      <!-- Ayarlar (bleed, dpi, beden) -->
       <div class="option-row option-row-top" id="output-options">
+        <label class="option-label">
+          Beden etiketi:
+          <input type="text" id="size-label-input" class="select-field" placeholder="M, L, XL, 42…" style="width:90px">
+        </label>
         <label class="option-label">
           Kesim payı (bleed):
           <select id="bleed-select" class="select-field">
