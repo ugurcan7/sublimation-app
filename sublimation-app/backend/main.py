@@ -319,15 +319,15 @@ def _detect_all_sizes(raw_pieces) -> "Dict[str, Dict[str, Any]]":
         else:
             body_pieces.append(p)
 
-    # Kol yoksa gövdedeki en küçük çifti kol kabul et
+    # Kol yoksa gövdedeki en büyük çifti kol kabul et (şekil ayırt edemezse)
     if not sleeve_pieces and len(body_pieces) >= 4:
-        body_pieces.sort(key=lambda p: p.area(), reverse=True)
+        body_pieces.sort(key=lambda p: p.area())
         sleeve_pieces = body_pieces[-2:]
         body_pieces   = body_pieces[:-2]
 
-    # Her grubu alana göre sırala (büyükten küçüğe)
-    body_pieces.sort(key=lambda p: p.area(), reverse=True)
-    sleeve_pieces.sort(key=lambda p: p.area(), reverse=True)
+    # Her grubu alana göre sırala (küçükten büyüğe → S1 en küçük beden)
+    body_pieces.sort(key=lambda p: p.area())
+    sleeve_pieces.sort(key=lambda p: p.area())
 
     # Gövde çiftleri → her 2 parça = 1 bedenin ön+arka
     n_body_sizes   = len(body_pieces) // 2
@@ -347,13 +347,15 @@ def _detect_all_sizes(raw_pieces) -> "Dict[str, Dict[str, Any]]":
         bi = si * 2  # gövde index
         sl = si * 2  # kol index
 
-        if bi < len(body_pieces):
-            p = body_pieces[bi]
+        # Çift içinde: bi = küçük (arka), bi+1 = büyük (ön)
+        # Ön panel forma içinde tipik olarak arka panelden büyüktür
+        if bi + 1 < len(body_pieces):
+            p = body_pieces[bi + 1]
             p.piece_type = "front"
             p.size = size_name
             group["front"] = p
-        if bi + 1 < len(body_pieces):
-            p = body_pieces[bi + 1]
+        if bi < len(body_pieces):
+            p = body_pieces[bi]
             p.piece_type = "back"
             p.size = size_name
             group["back"] = p

@@ -1410,3 +1410,70 @@ footer {
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* ── Referans beden banner ── */
+.ref-size-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 100%);
+  border: 1.5px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  padding: .75rem 1rem;
+  margin-bottom: 1rem;
+}
+.ref-size-info {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  font-size: .9rem;
+  color: var(--gray-700);
+}
+.ref-size-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex-shrink: 0;
+}
+.btn-change-ref {
+  font-size: .78rem;
+  padding: .3rem .75rem;
+  border-radius: 6px;
+  border: 1.5px solid #93c5fd;
+  background: white;
+  color: var(--blue);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.btn-change-ref:hover { background: #eff6ff; }
+
+/* ── Tüm bedenlere uyarla butonu ── */
+.adapt-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--gray-200);
+}
+.btn-adapt {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  gap: .5rem;
+}
+.btn-adapt:hover:not(:disabled) {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+  box-shadow: 0 6px 20px rgba(22,163,74,.3);
+  transform: translateY(-1px);
+}
+.btn-adapt:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.adapt-hint {
+  font-size: .82rem;
+  color: var(--gray-500);
+}

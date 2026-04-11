@@ -154,10 +154,19 @@
         <span class="step-badge">3</span>
         <h2>Tasarım Görselleri</h2>
       </div>
-      <p class="card-desc">
+      <p class="card-desc" id="step3-desc">
         Seçtiğiniz her parça için tasarım görselini yükleyin.
         <strong>Tümüne Uygula</strong> ile aynı deseni bütün parçalara atayabilirsiniz.
       </p>
+
+      <!-- Referans beden bilgi bandı (graded modda gösterilir) -->
+      <div class="ref-size-banner hidden" id="ref-size-banner">
+        <div class="ref-size-info">
+          <span class="ref-size-dot"></span>
+          <span id="ref-size-banner-text"></span>
+        </div>
+        <button class="btn-change-ref" id="btn-change-ref">Bedeni Değiştir</button>
+      </div>
 
       <div class="apply-all-row" id="apply-all-row">
         <input type="file" id="input-all" accept=".png,.jpg,.jpeg,.svg,.webp" style="display:none">
@@ -168,6 +177,17 @@
       </div>
 
       <div class="design-grid" id="design-grid"></div>
+
+      <!-- Diğer bedenlere uyarla butonu (graded modda gösterilir) -->
+      <div class="adapt-btn-row hidden" id="adapt-btn-row">
+        <button class="btn-primary btn-adapt" id="adapt-btn" disabled>
+          <svg viewBox="0 0 20 20" fill="currentColor" width="18">
+            <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/>
+          </svg>
+          <span id="adapt-btn-text">Tüm Bedenlere Uyarla &amp; PDF Üret</span>
+        </button>
+        <p class="adapt-hint" id="adapt-hint">En az bir parçaya tasarım yükleyin</p>
+      </div>
     </section>
 
     <!-- Adım 4: Üretim ve İndirme -->

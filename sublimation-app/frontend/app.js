@@ -546,10 +546,71 @@ function updateThumbDesign(type) {
   svgEl.innerHTML = _thumbSvgContent(type, pdata, imgSrc, deg);
 }
 
+function _refreshAdaptBtn() {
+  const btn  = document.getElementById("adapt-btn");
+  const hint = document.getElementById("adapt-hint");
+  if (!btn) return;
+  const hasDesign = Object.keys(state.designFiles).length > 0;
+  btn.disabled = !hasDesign;
+  if (hasDesign) {
+    hint.textContent = `${Object.keys(state.designFiles).length} parçaya tasarım yüklendi — hazır`;
+    hint.style.color = "var(--green, #15803d)";
+  } else {
+    hint.textContent = "En az bir parçaya tasarım yükleyin";
+    hint.style.color = "";
+  }
+}
+
 function renderDesignSection(types, previewData) {
   const grid = document.getElementById("design-grid");
   grid.innerHTML = "";
   if (!types.length) return;
+
+  // ── Graded mod: referans beden banner + uyarla butonu ──
+  const banner     = document.getElementById("ref-size-banner");
+  const adaptRow   = document.getElementById("adapt-btn-row");
+  const step3Desc  = document.getElementById("step3-desc");
+
+  if (state.pltMode === "graded") {
+    const refLabel = state.sizeLabels?.[state.referenceSize] || state.referenceSize || "?";
+    const totalSizes = Object.keys(state.allPieces).length;
+
+    // Banner
+    const bannerText = document.getElementById("ref-size-banner-text");
+    if (bannerText) bannerText.innerHTML =
+      `<strong>Referans Beden: ${refLabel}</strong> parçaları için tasarım yükleyin — diğer <strong>${totalSizes - 1} beden</strong> otomatik ölçeklendirilecek`;
+    banner?.classList.remove("hidden");
+
+    // Adapt butonu
+    if (adaptRow) {
+      adaptRow.classList.remove("hidden");
+      const adaptBtnText = document.getElementById("adapt-btn-text");
+      if (adaptBtnText) adaptBtnText.textContent =
+        `Tüm ${totalSizes} Bedene Uyarla & PDF Üret`;
+      _refreshAdaptBtn();
+
+      // Butona tıklayınca direkt grading başlat
+      const adaptBtn = document.getElementById("adapt-btn");
+      adaptBtn?.removeEventListener("click", runGrading); // önceki listener temizle
+      adaptBtn?.addEventListener("click", runGrading);
+    }
+
+    // Step 3 açıklama güncelle
+    if (step3Desc) step3Desc.innerHTML =
+      `<strong>${refLabel}</strong> bedeni için tasarım yükleyin. ` +
+      `<em>Tüm Bedenlere Uyarla</em> butonu ile tasarım ${totalSizes} bedene otomatik ölçeklenir.`;
+
+    // "Bedeni değiştir" butonu
+    document.getElementById("btn-change-ref")?.addEventListener("click", () => {
+      document.getElementById("step-2").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  } else {
+    banner?.classList.add("hidden");
+    adaptRow?.classList.add("hidden");
+    if (step3Desc) step3Desc.innerHTML =
+      `Seçtiğiniz her parça için tasarım görselini yükleyin. ` +
+      `<strong>Tümüne Uygula</strong> ile aynı deseni bütün parçalara atayabilirsiniz.`;
+  }
 
   const DISPLAY = {
     front:        { icon: "👕", label: "Ön Panel"    },
@@ -655,6 +716,7 @@ function handleDesign(type, file) {
       const degEl = btnRot.querySelector(".rotate-deg");
       if (degEl) degEl.textContent = `${state.designRotations[type]}°`;
     }
+    _refreshAdaptBtn();
   };
   reader.readAsDataURL(file);
 }
@@ -672,6 +734,7 @@ function removeDesign(type) {
   delete state.designRotations[type];
   delete state.designDataUrls[type];
   updateThumbDesign(type);
+  _refreshAdaptBtn();
   const safeId = `design-${type}`;
   document.getElementById(`hint-${safeId}`)?.classList.remove("hidden");
   document.getElementById(`remove-${safeId}`)?.classList.add("hidden");
