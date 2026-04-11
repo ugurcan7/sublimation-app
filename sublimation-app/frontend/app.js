@@ -30,7 +30,7 @@ function setStep(n) {
   for (let i = 2; i <= 4; i++) {
     const card = document.getElementById(`step-${i}`);
     if (!card) continue;
-    if (n >= 2 && i <= n + 1) card.classList.remove("disabled");
+    if (n >= 2 && i <= n) card.classList.remove("disabled");
     else card.classList.add("disabled");
   }
 }
@@ -158,9 +158,10 @@ pltUploadBtn.addEventListener("click", async e => {
     const preview = await apiFetch(`/session/${state.sessionId}/preview`);
     state.allPieces = preview;
 
-    // Step 2: parça seçim kartları
-    renderPieceSelectGrid(preview);
+    // Step 2: önce bölümü aç, sonra kartları doldur
     setStep(2);
+    renderPieceSelectGrid(preview);
+    document.getElementById("step-2").scrollIntoView({ behavior: "smooth", block: "start" });
 
   } catch (err) {
     const warnEl = document.getElementById("plt-warnings");
@@ -295,6 +296,8 @@ function _buildThumbSVG(pdata, W, H) {
 
 // Parçaları onayla butonu
 document.getElementById("confirm-pieces-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("confirm-pieces-btn");
+
   // Atlanmayan parçaların listesi
   const active = Object.entries(state.pieceAssignments)
     .filter(([, v]) => v !== "skip");
@@ -303,8 +306,10 @@ document.getElementById("confirm-pieces-btn").addEventListener("click", async ()
     toast("En az bir parça seçin", "error"); return;
   }
 
-  // Backend'e yeni tip atamalarını gönder
-  // pieceAssignments key = "SIZE__OLDTYPE", value = newtype
+  btn.disabled = true;
+  btn.textContent = "Kaydediliyor...";
+
+  // Backend'e yeni tip atamalarını gönder (sadece değişenler)
   try {
     for (const [key, newType] of active) {
       const [size, oldType] = key.split("__");
@@ -316,7 +321,6 @@ document.getElementById("confirm-pieces-btn").addEventListener("click", async ()
       await apiFetch(`/session/${state.sessionId}/assign-piece-type`, { method: "POST", body: fd });
     }
   } catch (e) {
-    // Atama hatası kritik değil — devam et
     console.warn("Atama hatası:", e.message);
   }
 
@@ -332,8 +336,12 @@ document.getElementById("confirm-pieces-btn").addEventListener("click", async ()
   }
   state.piecePreview = newPreview;
 
-  renderDesignSection(state.activePieceTypes, newPreview);
+  btn.disabled = false;
+  btn.innerHTML = `Parçaları Onayla <svg viewBox="0 0 20 20" fill="currentColor" width="16"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>`;
+
   setStep(3);
+  renderDesignSection(state.activePieceTypes, newPreview);
+  document.getElementById("step-3").scrollIntoView({ behavior: "smooth", block: "start" });
   toast(`${state.activePieceTypes.length} parça seçildi`, "success");
 });
 
@@ -557,6 +565,7 @@ async function runGrading() {
   resultSec.classList.add("hidden");
   errBox.classList.add("hidden");
   setStep(4);
+  document.getElementById("step-4").scrollIntoView({ behavior: "smooth", block: "start" });
 
   let pollTimer = null;
   const startPolling = () => {
