@@ -11,6 +11,9 @@ outputs/
 
 # Session data
 sessions.pkl
+sessions.pkl.migrated
+sessions.db
+*.plt
 
 # macOS
 .DS_Store
