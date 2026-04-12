@@ -177,6 +177,46 @@ class GradingEngine:
             logger.info(f"  {size}: {len(result[size])} parça PLT'den alındı")
         return result
 
+    def grade_all_flat(
+        self,
+        target_sizes: List[str],
+        ref_size_key: str = "BASE",
+        width_step_mm: float = 4.0,
+        height_step_mm: float = 2.0,
+    ) -> Dict[str, Dict[str, GradedPiece]]:
+        """
+        Tek bedenden (flat PLT) doğrusal ölçekleme ile tüm bedenleri üret.
+
+        target_sizes: sıralı beden listesi (küçükten büyüğe, örn: ["34","36","38","40","42"])
+        ref_size_key: PLT'deki beden anahtarı (örn: "BASE" veya "M")
+        width_step_mm: her adımda genişlik artışı (mm)
+        height_step_mm: her adımda yükseklik artışı (mm)
+        """
+        # Fallback: BASE veya herhangi bir mevcut beden kabul et
+        ref_pieces = self.grouped.get(ref_size_key, {})
+        if not ref_pieces:
+            for fallback in ["BASE"] + list(self.grouped.keys()):
+                ref_pieces = self.grouped.get(fallback, {})
+                if ref_pieces:
+                    ref_size_key = fallback
+                    break
+        if not ref_pieces:
+            raise ValueError(f"Referans beden '{ref_size_key}' bulunamadı")
+
+        ref_pos = target_sizes.index(ref_size_key) if ref_size_key in target_sizes else len(target_sizes) // 2
+        result: Dict[str, Dict[str, GradedPiece]] = {}
+
+        for i, size in enumerate(target_sizes):
+            steps = i - ref_pos
+            result[size] = {}
+            for ptype, piece in ref_pieces.items():
+                result[size][ptype] = _grade_piece_linear(
+                    piece, size, steps, width_step_mm, height_step_mm
+                )
+            logger.info(f"  {size}: {len(result[size])} parça (adım={steps:+d})")
+
+        return result
+
     def grade_all(
         self,
         target_sizes: List[str],
@@ -357,6 +397,35 @@ def smooth_vectors(vectors: np.ndarray, window: int = 5) -> np.ndarray:
         indices = [(i + j - half) % n for j in range(window)]
         smoothed[i] = vectors[indices].mean(axis=0)
     return smoothed
+
+
+def _grade_piece_linear(
+    piece: PatternPiece,
+    target_size: str,
+    steps: int,
+    width_step_mm: float,
+    height_step_mm: float,
+) -> GradedPiece:
+    """
+    Doğrusal bounding-box ölçekleme ile tek parçayı grade et.
+    steps=0 → referans (değişmez), steps=+1 → bir adım büyük, steps=-1 → küçük.
+    """
+    pts = piece.points
+    bb_w = pts[:, 0].max() - pts[:, 0].min()
+    bb_h = pts[:, 1].max() - pts[:, 1].min()
+
+    sx = 1.0 + (steps * width_step_mm  / bb_w) if bb_w > 1e-6 else 1.0
+    sy = 1.0 + (steps * height_step_mm / bb_h) if bb_h > 1e-6 else 1.0
+
+    centroid = pts.mean(axis=0)
+    graded_pts = centroid + (pts - centroid) * np.array([sx, sy])
+
+    return GradedPiece(
+        piece_type=piece.piece_type,
+        size=target_size,
+        points=graded_pts,
+        source_label=getattr(piece, "label", ""),
+    )
 
 
 def compute_global_scale_grading(

@@ -11,13 +11,13 @@ Endpoint'ler:
   GET  /session/{id}/pdf/{size}    — PDF indir
   GET  /session/{id}/svg/{size}/{type} — SVG önizleme
   GET  /session/{id}/preview       — Tüm parça önizlemesi (JSON)
+  GET  /session/{id}/preview-svg/{type} — Adım 3 anlık SVG önizlemesi
   DELETE /session/{id}             — Oturumu temizle
 """
 from __future__ import annotations
 
 import logging
 import os
-import pickle
 import shutil
 import uuid
 from datetime import datetime, timedelta
@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Any
 import numpy as np
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 import aiofiles
 
@@ -37,6 +37,7 @@ from .grading import GradingEngine
 from .pattern_matcher import match_pieces_across_sizes
 from .design_placer import SVGDesignPlacer
 from .pdf_generator import generate_size_pdf, svg_to_pdf
+from . import db as session_db
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -70,33 +71,32 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-SESSIONS_FILE = BASE_DIR / "sessions.pkl"
+SESSIONS_FILE = BASE_DIR / "sessions.pkl"   # migration için
+DB_PATH = BASE_DIR / "sessions.db"
 
 # ─── Frontend statik dosyaları ───────────────────────────────────────────────
 if FRONTEND_DIR.exists():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
-# ─── Session kalıcılığı ───────────────────────────────────────────────────────
+# ─── Session kalıcılığı (SQLite) ──────────────────────────────────────────────
+
+# Pickle'dan SQLite'a tek seferlik migration
+session_db.migrate_from_pickle(SESSIONS_FILE, DB_PATH)
+session_db.init_db(DB_PATH)
+
 
 def _save_sessions() -> None:
-    try:
-        with open(SESSIONS_FILE, "wb") as f:
-            pickle.dump(sessions, f, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception as e:
-        logger.warning(f"Session kayıt hatası: {e}")
+    for session in sessions.values():
+        session_db.save_session(DB_PATH, session)
+
+
+def _save_session(session: UploadSession) -> None:
+    """Tek oturumu kaydet (toplu kayıt yerine)."""
+    session_db.save_session(DB_PATH, session)
 
 
 def _load_sessions() -> Dict[str, UploadSession]:
-    if not SESSIONS_FILE.exists():
-        return {}
-    try:
-        with open(SESSIONS_FILE, "rb") as f:
-            loaded = pickle.load(f)
-        logger.info(f"Disk'ten {len(loaded)} oturum yüklendi")
-        return loaded
-    except Exception as e:
-        logger.warning(f"Session yükleme hatası: {e}")
-        return {}
+    return session_db.load_all_sessions(DB_PATH)
 
 
 def _cleanup_old_sessions() -> None:
@@ -166,7 +166,7 @@ async def create_session(reference_size: str = Form(default="M")):
         reference_size=reference_size.upper(),
     )
     logger.info(f"Yeni oturum: {session_id} (ref={reference_size})")
-    _save_sessions()
+    _save_session(sessions[session_id])
     return {"session_id": session_id, "reference_size": reference_size.upper()}
 
 
@@ -193,7 +193,7 @@ async def delete_session(session_id: str):
     import shutil
     _get_session(session_id)
     sessions.pop(session_id, None)
-    # Dosyaları sil
+    session_db.delete_session(DB_PATH, session_id)
     for d in [UPLOAD_DIR / session_id, OUTPUT_DIR / session_id]:
         if d.exists():
             shutil.rmtree(d)
@@ -268,7 +268,7 @@ async def upload_plt(
         f"mod={mode}, {len(grouped.get('BASE', grouped.get(sizes_found[0] if sizes_found else '', {})))} parça gösteriliyor"
     )
 
-    _save_sessions()
+    _save_session(s)
 
     return {
         "total_pieces": len(raw_pieces),
@@ -549,7 +549,9 @@ async def run_grading(
     bleed_mm: float = Form(default=3.0),
     dpi: int = Form(default=300),
     design_rotations: str = Form(default=""),
-    size_label: str = Form(default=""),  # flat modda çıktı için beden etiketi (M, L, 42 vs.)
+    size_label: str = Form(default=""),       # flat modda çıktı için beden etiketi (M, L, 42 vs.)
+    width_step_mm: float = Form(default=4.0), # flat grading adım genişliği
+    height_step_mm: float = Form(default=2.0),# flat grading adım yüksekliği
 ):
     """
     Grading çalıştır + tüm bedenlere desen yerleştir + SVG üret.
@@ -585,7 +587,7 @@ async def run_grading(
     is_multi = len(s.parsed_pieces) > 1
 
     if has_base and not is_multi:
-        # Tek BASE: kullanıcı beden etiketi girdiyse yeniden adlandır
+        # Tek BASE: kullanıcı beden etiketi veya grading serisi girdiyse işle
         label = size_label.strip().upper() if size_label.strip() else "BASE"
         if label != "BASE":
             s.parsed_pieces[label] = s.parsed_pieces.pop("BASE")
@@ -593,7 +595,13 @@ async def run_grading(
         else:
             s.reference_size = "BASE"
             label = "BASE"
-        requested_sizes = [label]
+
+        if len(requested_sizes) > 1:
+            # Flat grading modu: doğrusal ölçekleme ile birden fazla beden üret
+            ref_key = label  # PLT'deki anahtar
+            pass  # graded_all aşağıda üretilecek
+        else:
+            requested_sizes = [label]
     elif is_multi:
         # Çoklu beden (S1…SN veya labeled): tüm bedenleri işle
         # requested_sizes zaten kullanıcıdan geliyor; yoksa tüm bedenler
@@ -613,10 +621,31 @@ async def run_grading(
     plt_sizes = set(s.parsed_pieces.keys())
     all_present = all(sz in plt_sizes for sz in requested_sizes)
 
+    # Flat PLT + birden fazla hedef beden → doğrusal grading
+    flat_multi = (
+        has_base and not is_multi and len(requested_sizes) > 1
+        and not all_present
+    )
+
     if all_present:
         logger.info("Tüm bedenler PLT'de mevcut — grading atlandı (passthrough)")
         _set_progress(session_id, 15, "Parçalar hazırlanıyor...")
         graded_all = engine.passthrough_all(target_sizes=requested_sizes)
+        s.grading_vectors = {}
+    elif flat_multi:
+        # Tek beden PLT'den doğrusal ölçekleme
+        ref_key = s.reference_size
+        _set_progress(session_id, 15, f"Doğrusal grading ({len(requested_sizes)} beden)...")
+        try:
+            graded_all = engine.grade_all_flat(
+                target_sizes=requested_sizes,
+                ref_size_key=ref_key,
+                width_step_mm=width_step_mm,
+                height_step_mm=height_step_mm,
+            )
+        except ValueError as e:
+            _set_progress(session_id, 0, str(e), done=True, error=str(e))
+            raise HTTPException(422, f"Flat grading hatası: {e}")
         s.grading_vectors = {}
     else:
         _set_progress(session_id, 10, "Grading hesaplanıyor...")
@@ -713,7 +742,7 @@ async def run_grading(
     else:
         _set_progress(session_id, 100, f"Tamamlandı! {len(s.output_pdfs)} beden hazır.", done=True)
 
-    _save_sessions()
+    _save_session(s)
 
     return {
         "completed_sizes": list(s.output_pdfs.keys()),
@@ -851,6 +880,60 @@ async def get_preview_data(session_id: str):
 
 
 # ─── Grading vektörleri (debug) ───────────────────────────────────────────────
+
+@app.get("/session/{session_id}/preview-svg/{piece_type}")
+async def preview_piece_svg(session_id: str, piece_type: str):
+    """
+    Adım 3'te desen yüklendikten sonra anlık SVG önizlemesi döndür.
+    Tasarım yüklenmediyse parça konturunu gösterir.
+    Dosyaya yazmaz — bellekte üretir.
+    """
+    import tempfile
+
+    s = _get_session(session_id)
+    if not s.parsed_pieces:
+        raise HTTPException(400, "PLT henüz yüklenmedi")
+
+    # Parçayı bul (referans beden veya BASE)
+    piece = None
+    for candidate_size in [s.reference_size, "BASE"] + list(s.parsed_pieces.keys()):
+        piece = s.parsed_pieces.get(candidate_size, {}).get(piece_type)
+        if piece is not None:
+            break
+
+    if piece is None:
+        raise HTTPException(404, f"Parça '{piece_type}' bulunamadı")
+
+    gp = GradedPiece(
+        piece_type=getattr(piece, "piece_type", piece_type),
+        size=getattr(piece, "size", s.reference_size),
+        points=piece.points.copy(),
+        source_label=getattr(piece, "label", ""),
+    )
+
+    design_path = s.design_files.get(piece_type)
+    if design_path and not os.path.exists(design_path):
+        design_path = None
+
+    with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as tf:
+        tmp_path = tf.name
+
+    try:
+        placer = SVGDesignPlacer(bleed_mm=3.0, dpi=150)
+        placer.generate_svg(
+            piece=gp,
+            design_image_path=design_path,
+            output_path=tmp_path,
+        )
+        content = Path(tmp_path).read_text(encoding="utf-8")
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except OSError:
+            pass
+
+    return Response(content=content, media_type="image/svg+xml")
+
 
 @app.get("/session/{session_id}/grading-info")
 async def get_grading_info(session_id: str):

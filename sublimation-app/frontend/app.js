@@ -4,18 +4,19 @@ const API = "";
 
 // ── Durum ─────────────────────────────────────────────────────────────────────
 const state = {
-  sessionId:       null,
-  pltFile:         null,
-  pltMode:         "flat",       // "flat" | "labeled"
-  sizeLabel:       "",           // kullanıcının girdiği beden etiketi (M, L, 42 vs.)
-  allPieces:       {},
+  sessionId:        null,
+  pltFile:          null,
+  pltMode:          "flat",       // "flat" | "labeled"
+  sizeLabel:        "",           // kullanıcının girdiği beden etiketi (M, L, 42 vs.)
+  flatGradingSizes: null,         // flat grading serisi: ["34","36",...] veya null (tek beden)
+  allPieces:        {},
   pieceAssignments: {},
   activePieceTypes: [],
-  designFiles:     {},
-  designRotations: {},
-  designDataUrls:  {},
-  piecePreview:    {},
-  failedSizes:     [],
+  designFiles:      {},
+  designRotations:  {},
+  designDataUrls:   {},
+  piecePreview:     {},
+  failedSizes:      [],
 };
 
 // ── Stepper ───────────────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ function resetState() {
   state.sizeLabels = {};
   state.referenceSize = null;
   state.sizeNamesFromPlt = false;
+  state.flatGradingSizes = null;
   document.getElementById("size-table-wrap").innerHTML = "";
   document.getElementById("piece-select-grid").innerHTML = "";
 }
@@ -422,6 +424,67 @@ function renderPieceSelectGrid(preview) {
       state.piecePreview[ptype] = pdata;
     }
   }
+
+  // Flat grading serisi seçici
+  _renderFlatGradingRow();
+}
+
+const GRADING_SERIES = [
+  { label: "— Tek beden (grading yok) —", sizes: null },
+  { label: "XS · S · M · L · XL (5 beden)",         sizes: ["XS","S","M","L","XL"] },
+  { label: "XS · S · M · L · XL · XXL (6 beden)",   sizes: ["XS","S","M","L","XL","XXL"] },
+  { label: "34 · 36 · 38 · 40 · 42 · 44 (6 beden)", sizes: ["34","36","38","40","42","44"] },
+  { label: "36 · 38 · 40 · 42 · 44 · 46 · 48 (7)",  sizes: ["36","38","40","42","44","46","48"] },
+  { label: "34 · 36 · 38 · 40 · 42 · 44 · 46 · 48 (8)", sizes: ["34","36","38","40","42","44","46","48"] },
+  { label: "38 · 40 · 42 · 44 · 46 · 48 · 50 · 52 (8)", sizes: ["38","40","42","44","46","48","50","52"] },
+  { label: "34 → 56 (13 beden, step 2)",             sizes: ["34","36","38","40","42","44","46","48","50","52","54","56","58"] },
+];
+
+function _renderFlatGradingRow() {
+  // Varsa öncekini kaldır
+  document.getElementById("flat-grading-row")?.remove();
+
+  const wrap = document.getElementById("piece-select-grid");
+  if (!wrap) return;
+
+  const row = document.createElement("div");
+  row.id = "flat-grading-row";
+  row.className = "option-row flat-grading-row";
+  row.innerHTML = `
+    <label class="option-label" style="flex:1;min-width:220px">
+      <span style="font-weight:600;display:block;margin-bottom:4px">Grading Serisi</span>
+      <select id="grading-series-select" class="select-field" style="width:100%">
+        ${GRADING_SERIES.map((s, i) => `<option value="${i}">${s.label}</option>`).join("")}
+      </select>
+    </label>
+    <div class="grading-extra hidden" id="grading-extra" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <label class="option-label">
+        <span style="font-size:.78rem">Yüklenen beden</span>
+        <input type="text" id="size-label-input" class="select-field" placeholder="M, L, 42…" style="width:80px">
+      </label>
+      <label class="option-label">
+        <span style="font-size:.78rem">Genişlik adımı</span>
+        <input type="number" id="width-step-input" class="select-field" value="4" min="1" max="20" step="0.5" style="width:72px"> mm
+      </label>
+      <label class="option-label">
+        <span style="font-size:.78rem">Yükseklik adımı</span>
+        <input type="number" id="height-step-input" class="select-field" value="2" min="0.5" max="10" step="0.5" style="width:72px"> mm
+      </label>
+    </div>`;
+
+  wrap.after(row);
+
+  document.getElementById("grading-series-select").addEventListener("change", function() {
+    const idx = parseInt(this.value);
+    state.flatGradingSizes = GRADING_SERIES[idx].sizes;
+    const extra = document.getElementById("grading-extra");
+    if (state.flatGradingSizes) {
+      extra.classList.remove("hidden");
+      extra.style.display = "flex";
+    } else {
+      extra.classList.add("hidden");
+    }
+  });
 }
 
 function _updateCardStyle(card, assignValue) {
@@ -692,6 +755,9 @@ function renderDesignSection(types, previewData) {
           <span>${d.label}</span>
           ${dimsHtml}
         </div>
+        <button type="button" class="btn-preview" id="preview-${safeId}" data-type="${type}" title="Önizle">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="16"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+        </button>
         <button type="button" class="btn-rotate hidden" id="rotate-${safeId}" data-type="${type}">
           <span class="rotate-icon">↻</span> <span class="rotate-deg">0°</span>
         </button>
@@ -716,10 +782,11 @@ function renderDesignSection(types, previewData) {
       </div>`;
     grid.appendChild(card);
 
-    const inp    = card.querySelector(".design-input");
-    const drop   = card.querySelector(".design-drop");
-    const btnR   = card.querySelector(".btn-remove");
-    const btnRot = card.querySelector(".btn-rotate");
+    const inp     = card.querySelector(".design-input");
+    const drop    = card.querySelector(".design-drop");
+    const btnR    = card.querySelector(".btn-remove");
+    const btnRot  = card.querySelector(".btn-rotate");
+    const btnPrev = card.querySelector(".btn-preview");
 
     inp.addEventListener("change", () => { if (inp.files[0]) handleDesign(type, inp.files[0]); });
     drop.addEventListener("dragover",  e => { e.preventDefault(); drop.classList.add("drag-over"); });
@@ -728,8 +795,9 @@ function renderDesignSection(types, previewData) {
       e.preventDefault(); drop.classList.remove("drag-over");
       const f = e.dataTransfer.files[0]; if (f) handleDesign(type, f);
     });
-    btnR.addEventListener("click",   e => { e.stopPropagation(); removeDesign(type); });
-    btnRot.addEventListener("click", e => { e.stopPropagation(); rotateDesign(type); });
+    btnR.addEventListener("click",    e => { e.stopPropagation(); removeDesign(type); });
+    btnRot.addEventListener("click",  e => { e.stopPropagation(); rotateDesign(type); });
+    btnPrev.addEventListener("click", e => { e.stopPropagation(); openPreviewModal(type, pdata); });
   });
 
   // "Tümüne uygula"
@@ -868,6 +936,9 @@ async function runGrading() {
     if (state.pltMode === "graded") {
       // Graded: tüm bedenleri gönder (S1, S2, ...)
       targetSizes = Object.keys(state.allPieces).join(",");
+    } else if (state.flatGradingSizes?.length) {
+      // Flat grading serisi seçildi
+      targetSizes = state.flatGradingSizes.join(",");
     } else {
       targetSizes = state.sizeLabel || "BASE";
     }
@@ -879,6 +950,13 @@ async function runGrading() {
     }
     if (state.sizeLabel && state.sizeLabel !== "BASE") fd.append("size_label", state.sizeLabel);
     if (rotStr) fd.append("design_rotations", rotStr);
+    // Flat grading adım büyüklükleri
+    if (state.flatGradingSizes?.length) {
+      const ws = parseFloat(document.getElementById("width-step-input")?.value || "4");
+      const hs = parseFloat(document.getElementById("height-step-input")?.value || "2");
+      fd.append("width_step_mm",  isNaN(ws) ? "4" : String(ws));
+      fd.append("height_step_mm", isNaN(hs) ? "2" : String(hs));
+    }
 
     const data = await apiFetch(`/session/${state.sessionId}/grade`, { method:"POST", body:fd });
     stopPolling();
@@ -950,4 +1028,51 @@ function renderResults(data) {
   }
 
   document.getElementById("result-section").classList.remove("hidden");
+}
+
+// ── Önizleme Modalı ───────────────────────────────────────────────────────────
+
+function openPreviewModal(type, pdata) {
+  // Varsa öncekini kaldır
+  document.getElementById("preview-modal")?.remove();
+
+  const W = 480, H = 340;
+  const imgSrc = state.designDataUrls[type] || null;
+  const deg    = state.designRotations[type] ?? 0;
+  const svgInner = _thumbSvgContent(type, pdata, imgSrc, deg);
+
+  const modal = document.createElement("div");
+  modal.id = "preview-modal";
+  modal.innerHTML = `
+    <div class="pm-backdrop"></div>
+    <div class="pm-panel">
+      <div class="pm-header">
+        <span>${_pieceDisplayName(type)} — Önizleme</span>
+        <button class="pm-close" id="pm-close-btn">✕</button>
+      </div>
+      <div class="pm-body">
+        <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+             xmlns:xlink="http://www.w3.org/1999/xlink"
+             style="width:100%;height:auto;display:block">
+          ${svgInner}
+        </svg>
+        ${!imgSrc ? '<p class="pm-hint">Tasarım yüklendikten sonra desen görünür.</p>' : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const close = () => document.getElementById("preview-modal")?.remove();
+  modal.querySelector(".pm-backdrop").addEventListener("click", close);
+  modal.querySelector("#pm-close-btn").addEventListener("click", close);
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); }
+  });
+}
+
+function _pieceDisplayName(type) {
+  const DISPLAY = {
+    front: "Ön Panel", back: "Arka Panel",
+    left_sleeve: "Sol Kol", right_sleeve: "Sağ Kol",
+  };
+  return DISPLAY[type] || type.replace(/_/g, " ");
 }
