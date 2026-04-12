@@ -1095,13 +1095,36 @@ async def assign_piece_type(
     size: str = Form(...),
     old_type: str = Form(...),
     new_type: str = Form(...),
+    all_sizes: bool = Form(default=False),
 ):
     """
     Kullanıcı belirli bir parçanın tipini değiştirir.
     Örn: size=M, old_type=unknown, new_type=front
+    all_sizes=True ise aynı dönüşümü tüm bedenlere uygular.
     """
     s = _get_session(session_id)
     size = size.upper()
+
+    if new_type not in ["front", "back", "left_sleeve", "right_sleeve", "unknown"]:
+        raise HTTPException(400, f"Geçersiz parça tipi: {new_type}")
+
+    if all_sizes:
+        affected_sizes = []
+        for sz, piece_dict in s.parsed_pieces.items():
+            if old_type in piece_dict:
+                piece = piece_dict.pop(old_type)
+                piece.piece_type = new_type
+                if new_type in piece_dict:
+                    logger.warning(f"  {sz}/{new_type} zaten var, üzerine yazılıyor")
+                piece_dict[new_type] = piece
+                affected_sizes.append(sz)
+                logger.info(f"Parça tipi değiştirildi: {sz}/{old_type} → {new_type}")
+        _save_session(s)
+        return {
+            "old_type": old_type,
+            "new_type": new_type,
+            "affected_sizes": affected_sizes,
+        }
 
     if size not in s.parsed_pieces:
         raise HTTPException(404, f"Beden {size} bulunamadı")
@@ -1109,9 +1132,6 @@ async def assign_piece_type(
     piece_dict = s.parsed_pieces[size]
     if old_type not in piece_dict:
         raise HTTPException(404, f"Parça tipi '{old_type}' bulunamadı")
-
-    if new_type not in ["front", "back", "left_sleeve", "right_sleeve", "unknown"]:
-        raise HTTPException(400, f"Geçersiz parça tipi: {new_type}")
 
     piece = piece_dict.pop(old_type)
     piece.piece_type = new_type
@@ -1122,12 +1142,14 @@ async def assign_piece_type(
 
     piece_dict[new_type] = piece
     logger.info(f"Parça tipi değiştirildi: {size}/{old_type} → {new_type}")
+    _save_session(s)
 
     return {
         "size": size,
         "old_type": old_type,
         "new_type": new_type,
         "current_pieces": list(piece_dict.keys()),
+        "affected_sizes": [size],
     }
 
 

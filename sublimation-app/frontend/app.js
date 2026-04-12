@@ -251,7 +251,16 @@ function renderSizeTable(preview) {
 
     const piecesHtml = Object.entries(group).map(([ptype, pdata]) => {
       const cls = ptype.includes("sleeve") ? "sp-sleeve" : ptype === "back" ? "sp-back" : "sp-front";
-      return `<span class="size-piece-badge ${cls}">${PIECE_ICONS[ptype] || "▪"} ${PIECE_NAMES[ptype] || ptype} ${pdata.area_cm2}cm²</span>`;
+      const optHtml = ["front","back","left_sleeve","right_sleeve"].map(t =>
+        `<option value="${t}"${t===ptype?" selected":""}>${PIECE_NAMES[t]||t}</option>`
+      ).join("");
+      return `<span class="size-piece-badge ${cls}" style="display:inline-flex;align-items:center;gap:4px">
+        ${PIECE_ICONS[ptype]||"▪"}
+        <select class="ptype-select" data-size="${sKey}" data-old-type="${ptype}" style="font-size:.75rem;border:none;background:transparent;cursor:pointer">
+          ${optHtml}
+        </select>
+        <span style="opacity:.6">${pdata.area_cm2}cm²</span>
+      </span>`;
     }).join("");
 
     html += `
@@ -270,7 +279,11 @@ function renderSizeTable(preview) {
     state.sizeLabels[sKey] = displayValue;
   });
 
-  html += "</tbody></table>";
+  html += `</tbody></table>
+  <label class="option-label" style="font-size:.8rem;margin-top:8px;display:flex;gap:6px;align-items:center">
+    <input type="checkbox" id="retype-all-sizes" checked>
+    Değişikliği tüm bedenlere uygula
+  </label>`;
   wrap.innerHTML = html;
 
   // Beden adı input değişince state güncelle
@@ -287,6 +300,30 @@ function renderSizeTable(preview) {
       document.getElementById(`size-row-${radio.value}`)?.classList.add("ref-row");
       state.referenceSize = radio.value;
     });
+  });
+
+  // Parça tipi dropdown değişimi — event delegation
+  wrap.addEventListener("change", async function(e) {
+    const sel = e.target.closest(".ptype-select");
+    if (!sel) return;
+    const size = sel.dataset.size;
+    const oldType = sel.dataset.oldType;
+    const newType = sel.value;
+    if (oldType === newType) return;
+    const allSizes = document.getElementById("retype-all-sizes")?.checked ?? true;
+    const fd = new FormData();
+    fd.append("size", size);
+    fd.append("old_type", oldType);
+    fd.append("new_type", newType);
+    fd.append("all_sizes", allSizes ? "true" : "false");
+    try {
+      const result = await apiFetch(`/session/${state.sessionId}/assign-piece-type`, { method: "POST", body: fd });
+      sel.dataset.oldType = newType;
+      toast(`Parça tipi güncellendi (${result.affected_sizes?.length || 1} beden)`, "success");
+    } catch(err) {
+      toast(`Hata: ${err.message}`, "error");
+      sel.value = oldType; // revert
+    }
   });
 
   _updatePiecePreviewFromSize(preview, state.referenceSize);
