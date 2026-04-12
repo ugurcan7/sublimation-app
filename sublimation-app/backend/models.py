@@ -210,8 +210,21 @@ class UploadSession:
     errors: List[str] = field(default_factory=list)
 
     def detected_sizes(self) -> List[str]:
-        return sorted(self.parsed_pieces.keys(),
-                      key=lambda s: SIZE_INDEX.get(s, 99))
+        def _sort_key(s: str):
+            if s in SIZE_INDEX:
+                return (0, SIZE_INDEX[s], 0)
+            # Numerik beden (36, 38, 40 …)
+            try:
+                return (0, 0, int(s))
+            except ValueError:
+                pass
+            # S1, S2 … gibi sıralı etiketler
+            import re as _re
+            m = _re.match(r'^[A-Za-z]+(\d+)$', s)
+            if m:
+                return (0, 0, int(m.group(1)))
+            return (1, 0, 0)  # bilinmeyen → sona
+        return sorted(self.parsed_pieces.keys(), key=_sort_key)
 
     def detected_piece_types(self) -> List[str]:
         types = set()

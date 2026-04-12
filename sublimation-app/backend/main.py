@@ -53,9 +53,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
+_ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -207,13 +208,11 @@ async def get_status(session_id: str):
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """Oturumu ve dosyalarını temizle."""
-    import shutil
     _get_session(session_id)
     sessions.pop(session_id, None)
     session_db.delete_session(DB_PATH, session_id)
     for d in [UPLOAD_DIR / session_id, OUTPUT_DIR / session_id]:
-        if d.exists():
-            shutil.rmtree(d)
+        shutil.rmtree(d, ignore_errors=True)
     return {"deleted": session_id}
 
 
@@ -248,14 +247,16 @@ async def upload_plt(
     async with aiofiles.open(save_path, "wb") as f:
         await f.write(content)
 
-    # Parse et
+    # Parse et — hata durumunda yüklenen dosyayı temizle
     try:
         parser = PLTParser(save_path)
         raw_pieces = parser.parse()
     except Exception as e:
+        shutil.rmtree(save_dir, ignore_errors=True)
         raise HTTPException(422, f"PLT parse hatası: {e}")
 
     if not raw_pieces:
+        shutil.rmtree(save_dir, ignore_errors=True)
         raise HTTPException(422, "PLT dosyasında kalıp parçası bulunamadı")
 
     has_labels = any(p.label.strip() for p in raw_pieces)

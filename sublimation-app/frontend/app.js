@@ -602,8 +602,7 @@ document.getElementById("confirm-pieces-btn").addEventListener("click", async ()
 
 // ── Tasarım kartları ──────────────────────────────────────────────────────────
 
-function _thumbSvgContent(type, pdata, imgSrc, deg) {
-  const W = 200, H = 130;
+function _thumbSvgContent(type, pdata, imgSrc, deg, W = 200, H = 130) {
   if (!pdata?.points_preview?.length) {
     return `<rect width="${W}" height="${H}" fill="#f8fafc"/>
             <text x="${W/2}" y="${H/2+4}" text-anchor="middle" fill="#94a3b8" font-size="11">Önizleme yok</text>`;
@@ -649,14 +648,21 @@ function updateThumbDesign(type) {
   const pdata  = state.piecePreview[type];
   const imgSrc = state.designDataUrls[type] || null;
   const deg    = state.designRotations[type] ?? 0;
-  svgEl.innerHTML = _thumbSvgContent(type, pdata, imgSrc, deg);
-  // dw/dh'yi SVG element'e yaz (drag hesabı için)
-  if (pdata?.bbox) {
-    const W = 200, H = 130, pad = 10;
-    const scale = Math.min((W - 2*pad) / pdata.bbox.w, (H - 2*pad) / pdata.bbox.h);
-    svgEl.dataset.dw = (pdata.bbox.w * scale).toFixed(2);
-    svgEl.dataset.dh = (pdata.bbox.h * scale).toFixed(2);
+
+  // Parçanın gerçek en-boy oranına göre viewBox hesapla
+  let W = 200, H = 130;
+  if (pdata?.bbox && pdata.bbox.w > 0 && pdata.bbox.h > 0) {
+    const pad = 10;
+    const maxSide = 200;
+    const scaleToFit = Math.min((maxSide - 2*pad) / pdata.bbox.w, (maxSide - 2*pad) / pdata.bbox.h);
+    W = Math.round(pdata.bbox.w * scaleToFit + 2*pad);
+    H = Math.round(pdata.bbox.h * scaleToFit + 2*pad);
+    svgEl.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const drawScale = Math.min((W - 2*pad) / pdata.bbox.w, (H - 2*pad) / pdata.bbox.h);
+    svgEl.dataset.dw = (pdata.bbox.w * drawScale).toFixed(2);
+    svgEl.dataset.dh = (pdata.bbox.h * drawScale).toFixed(2);
   }
+  svgEl.innerHTML = _thumbSvgContent(type, pdata, imgSrc, deg, W, H);
 }
 
 function _refreshAdaptBtn() {

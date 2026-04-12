@@ -258,31 +258,17 @@ def _parse_label(label: str) -> Tuple[str, str]:
     return size, ptype
 
 
-# Avrupa numerik beden → standart beden eşlemesi
-_NUMERIC_SIZE_MAP: Dict[str, str] = {
-    "32": "XXS", "34": "XXS",
-    "36": "XS",
-    "38": "S",
-    "40": "M",
-    "42": "L",
-    "44": "XL",
-    "46": "XXL",
-    "48": "XXXL",
-    "50": "XXXL",
-    # Çocuk / unisex
-    "35": "XS", "37": "S", "39": "M", "41": "L", "43": "XL", "45": "XXL",
-}
-
-
 def _normalize_size(raw: str) -> str:
     """
-    Ham beden string'ini standart SIZE_ORDER değerine dönüştür.
-    Numeric Avrupa bedenleri de desteklenir (36→XS, 40→M vb.)
+    Ham beden string'ini normalize et.
+    - XS/S/M/L/XL/XXL/XXXL → büyük harf
+    - 2XL/3XL → XXL/XXXL
+    - Numerik (36, 38, 40 …) → orijinal haliyle koru; PLT'deki adı kaybetme
     """
     if not raw:
         return ""
     up = raw.upper()
-    # Zaten bilinen beden mi?
+    # Zaten bilinen letter beden mi?
     if up in ("XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"):
         return up
     # 2XL, 3XL vb. → XXL, XXXL
@@ -290,8 +276,8 @@ def _normalize_size(raw: str) -> str:
     if m:
         n = int(m.group(1))
         return {2: "XXL", 3: "XXXL", 4: "XXXL", 5: "XXXL"}.get(n, "XXL")
-    # Numerik → standart
-    return _NUMERIC_SIZE_MAP.get(up, up)
+    # Numerik veya bilinmeyen → olduğu gibi döndür (36, 38, S1, S2 vb.)
+    return up
 
 
 # ─── Metadata tahmini ────────────────────────────────────────────────────────
