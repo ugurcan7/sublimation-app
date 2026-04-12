@@ -131,6 +131,8 @@ export function renderResults(data) {
     errBox.classList.remove("hidden");
   }
 
+  _renderDimsReport(data);
+
   const tabs = document.getElementById("preview-tabs");
   tabs.innerHTML = "";
   data.completed_sizes.forEach((size, i) => {
@@ -151,6 +153,75 @@ export function renderResults(data) {
   }
 
   document.getElementById("result-section").classList.remove("hidden");
+}
+
+function _renderDimsReport(data) {
+  const container = document.getElementById("dims-report");
+  if (!container) return;
+
+  const dims = data.size_dimensions;
+  if (!dims || !Object.keys(dims).length) { container.classList.add("hidden"); return; }
+
+  const sizes = data.completed_sizes.filter(s => dims[s]);
+  if (!sizes.length) { container.classList.add("hidden"); return; }
+
+  // Collect all piece types present across sizes
+  const ptypes = [...new Set(sizes.flatMap(s => Object.keys(dims[s])))].sort();
+
+  // Build table: rows = piece types, cols = sizes
+  let thead = `<tr><th>Parça</th>`;
+  sizes.forEach(s => {
+    const label = (state.sizeLabels?.[s] || "").trim() || (s === "BASE" ? "PDF" : s);
+    thead += `<th>${label}</th>`;
+  });
+  thead += `</tr>`;
+
+  let tbody = "";
+  ptypes.forEach(pt => {
+    // width row
+    tbody += `<tr class="dims-metric-row"><td rowspan="2" class="dims-ptype">${pt}</td>`;
+    sizes.forEach((s, i) => {
+      const d = dims[s]?.[pt];
+      const val = d ? `${d.width_mm} × ${d.height_mm}` : "—";
+      let delta = "";
+      if (i > 0) {
+        const prev = dims[sizes[i-1]]?.[pt];
+        if (d && prev) {
+          const dw = +(d.width_mm - prev.width_mm).toFixed(1);
+          const dh = +(d.height_mm - prev.height_mm).toFixed(1);
+          const cls = dw >= 0 ? "pos" : "neg";
+          delta = `<span class="dims-delta ${cls}">${dw >= 0 ? "+" : ""}${dw} / ${dh >= 0 ? "+" : ""}${dh}</span>`;
+        }
+      }
+      tbody += `<td class="dims-val">${val}${delta}</td>`;
+    });
+    tbody += `</tr>`;
+    // area row
+    tbody += `<tr class="dims-area-row">`;
+    sizes.forEach(s => {
+      const d = dims[s]?.[pt];
+      tbody += `<td class="dims-area">${d ? d.area_cm2 + " cm²" : "—"}</td>`;
+    });
+    tbody += `</tr>`;
+  });
+
+  container.innerHTML = `
+    <div class="dims-header">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="2" y="2" width="16" height="16" rx="2"/>
+        <line x1="2" y1="7" x2="18" y2="7"/>
+        <line x1="7" y1="7" x2="7" y2="18"/>
+      </svg>
+      Beden Ölçü Raporu
+      <span class="dims-hint">G × Y mm · Alan cm²</span>
+    </div>
+    <div class="dims-scroll">
+      <table class="dims-table">
+        <thead>${thead}</thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>`;
+  container.classList.remove("hidden");
 }
 
 export function initStep4() {

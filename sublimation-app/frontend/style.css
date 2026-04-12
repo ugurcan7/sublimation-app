@@ -1634,3 +1634,84 @@ footer {
   color: var(--gray-400);
   margin-top: .6rem;
 }
+
+/* ── Beden Ölçü Raporu ── */
+#dims-report {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.1rem;
+  margin-top: 1.2rem;
+}
+.dims-header {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: .75rem;
+}
+.dims-hint {
+  margin-left: auto;
+  font-size: .75rem;
+  font-weight: 400;
+  color: var(--gray-400);
+}
+.dims-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.dims-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .78rem;
+  color: var(--gray-700);
+}
+.dims-table th {
+  background: var(--gray-100);
+  padding: .4rem .65rem;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid var(--gray-200);
+  white-space: nowrap;
+}
+.dims-table td {
+  padding: .35rem .65rem;
+  border: 1px solid var(--gray-200);
+  vertical-align: middle;
+}
+.dims-ptype {
+  font-weight: 600;
+  color: var(--gray-600);
+  background: var(--gray-50);
+  text-align: center;
+}
+.dims-val {
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dims-area {
+  text-align: center;
+  font-size: .74rem;
+  color: var(--gray-500);
+  background: var(--gray-50);
+}
+.dims-delta {
+  display: inline-block;
+  font-size: .7rem;
+  font-weight: 600;
+  margin-left: .35rem;
+  padding: .05em .3em;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.dims-delta.pos {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.dims-delta.neg {
+  background: var(--red-bg);
+  color: var(--red);
+}
