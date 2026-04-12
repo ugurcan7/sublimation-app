@@ -697,7 +697,7 @@ function renderDesignSection(types, previewData) {
         </button>
       </div>
       <input type="file" id="input-${safeId}" class="design-input" data-type="${type}"
-             accept=".png,.jpg,.jpeg,.svg,.webp" style="display:none">
+             accept=".png,.jpg,.jpeg,.svg,.webp,.tif,.tiff" style="display:none">
       <div class="design-drop" data-type="${type}">
         <svg id="thumb-${safeId}" class="piece-thumb-svg"
              viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg"
@@ -748,8 +748,10 @@ function renderDesignSection(types, previewData) {
 }
 
 function handleDesign(type, file) {
-  if (file.size > 30 * 1024 * 1024) {
-    toast(`Tasarım 30MB'den büyük olamaz`, "error"); return;
+  const isTiff = file.name.toLowerCase().endsWith(".tif") || file.name.toLowerCase().endsWith(".tiff");
+  const maxMB  = isTiff ? 150 : 30;
+  if (file.size > maxMB * 1024 * 1024) {
+    toast(`Tasarım ${maxMB}MB'den büyük olamaz`, "error"); return;
   }
   state.designFiles[type] = file;
   if (!(type in state.designRotations)) state.designRotations[type] = 0;

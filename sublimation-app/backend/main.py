@@ -485,10 +485,29 @@ async def upload_design(
         target_types = [piece_type]
 
     ext = Path(file.filename).suffix.lower()
-    if ext not in (".png", ".jpg", ".jpeg", ".svg", ".webp"):
-        raise HTTPException(400, "Desteklenen format: PNG, JPG, SVG, WEBP")
+    if ext not in (".png", ".jpg", ".jpeg", ".svg", ".webp", ".tif", ".tiff"):
+        raise HTTPException(400, "Desteklenen format: PNG, JPG, SVG, WEBP, TIFF")
 
     content = await file.read()
+
+    # TIFF → JPEG dönüşümü: boyutu küçült, sistem yükünü azalt
+    if ext in (".tif", ".tiff"):
+        try:
+            from PIL import Image as PILImage
+            import io
+            img = PILImage.open(io.BytesIO(content))
+            if img.mode in ("RGBA", "P", "LA"):
+                img = img.convert("RGB")
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=95, optimize=True)
+            content = buf.getvalue()
+            ext = ".jpg"
+            logger.info(f"TIFF → JPEG dönüştürüldü: {len(content)//1024}KB")
+        except Exception as e:
+            raise HTTPException(422, f"TIFF dönüştürme hatası: {e}")
+
     save_dir = _session_dir(session_id, "designs")
 
     saved = []
