@@ -902,13 +902,14 @@ function renderResults(data) {
   grid.innerHTML = "";
 
   data.completed_sizes.forEach(size => {
+    // Kullanıcının girdiği beden adını kullan (yoksa internal key)
+    const userLabel = (state.sizeLabels?.[size] || "").trim() || (size === "BASE" ? "PDF" : size);
     const a = document.createElement("a");
     a.href     = `${API}/session/${state.sessionId}/pdf/${size}`;
-    a.download = `forma_${size}.pdf`;
+    a.download = `forma_${userLabel}.pdf`;
     a.className = "download-card";
-    const label = size === "BASE" ? "PDF" : size;
     a.innerHTML = `
-      <div class="download-size">${label}</div>
+      <div class="download-size">${userLabel}</div>
       <svg viewBox="0 0 20 20" fill="currentColor" width="20" class="download-icon">
         <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"/>
       </svg>
