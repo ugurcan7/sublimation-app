@@ -1492,6 +1492,58 @@ footer {
   vertical-align: middle;
 }
 
+/* ── Desen transform kontrolleri ── */
+.piece-thumb-svg.has-design {
+  cursor: grab;
+  user-select: none;
+}
+.piece-thumb-svg.has-design:active {
+  cursor: grabbing;
+}
+.tx-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--gray-100);
+  background: var(--gray-50);
+  border-radius: 0 0 10px 10px;
+}
+.tx-label {
+  font-size: .72rem;
+  color: var(--gray-400);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tx-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  min-width: 60px;
+}
+.tx-scale-val {
+  font-size: .72rem;
+  color: var(--gray-600);
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.btn-tx-reset {
+  background: none;
+  border: 1px solid var(--gray-200);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: .75rem;
+  color: var(--gray-400);
+  cursor: pointer;
+  line-height: 1.4;
+  transition: color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.btn-tx-reset:hover { color: var(--primary); border-color: var(--primary); }
+
 /* ── Flat grading satırı ── */
 .flat-grading-row {
   margin-top: 1rem;

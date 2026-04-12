@@ -55,6 +55,7 @@ def generate_size_pdf(
     design_files: Optional[Dict[str, str]] = None,
     bleed_mm: float = 3.0,
     rotations: Optional[Dict[str, int]] = None,
+    transforms: Optional[Dict[str, tuple]] = None,
 ) -> bool:
     """
     Bir beden için PDF üret.
@@ -70,6 +71,7 @@ def generate_size_pdf(
             dpi=dpi,
             bleed_mm=bleed_mm,
             rotations=rotations or {},
+            transforms=transforms or {},
         )
 
     # Eski yol: SVG yollarından türet (SVG → PNG → PDF)
@@ -129,6 +131,7 @@ def _render_pdf_with_pillow(
     dpi: int,
     bleed_mm: float,
     rotations: Optional[Dict[str, int]] = None,
+    transforms: Optional[Dict[str, tuple]] = None,
 ) -> bool:
     """
     Pillow ile render et:
@@ -136,10 +139,11 @@ def _render_pdf_with_pillow(
     2. Tüm parçaları grid düzeninde büyük canvas'a yerleştir
     3. PDF olarak kaydet
     """
-    px_per_mm = dpi / MM_PER_INCH
-    margin_px = int(MARGIN_MM * px_per_mm)
-    bleed_px  = int(bleed_mm * px_per_mm)
-    rotations = rotations or {}
+    px_per_mm  = dpi / MM_PER_INCH
+    margin_px  = int(MARGIN_MM * px_per_mm)
+    bleed_px   = int(bleed_mm * px_per_mm)
+    rotations  = rotations  or {}
+    transforms = transforms or {}
 
     # Tasarım olmayan parçaları atla
     piece_list = [
@@ -160,7 +164,9 @@ def _render_pdf_with_pillow(
     for idx, (ptype, gp) in enumerate(piece_list):
         design_path = design_files.get(ptype)
         rot = rotations.get(ptype, 0)
-        img = _render_piece(gp, design_path, px_per_mm, bleed_px, rotation=rot)
+        tx  = transforms.get(ptype, (0.0, 0.0, 1.0))
+        img = _render_piece(gp, design_path, px_per_mm, bleed_px, rotation=rot,
+                            design_offset_x=tx[0], design_offset_y=tx[1], design_scale=tx[2])
         piece_images[ptype] = img
         piece_sizes.append(img.size)
 
@@ -235,6 +241,9 @@ def _render_piece(
     px_per_mm: float,
     bleed_px: int,
     rotation: int = 0,
+    design_offset_x: float = 0.0,
+    design_offset_y: float = 0.0,
+    design_scale: float = 1.0,
 ) -> Image.Image:
     """
     Tek bir kalıp parçasını Pillow Image olarak render et.
@@ -267,11 +276,14 @@ def _render_piece(
             # Rotation uygula
             if rotation:
                 design = design.rotate(-rotation, expand=True)
-            # Parça boyutuna sığdır (fill — kırparak)
-            design_resized = _fit_cover(design, w_px, h_px)
+            # Ölçek + konum: kare boyut = max(w,h) * scale
+            d_px = max(1, int(max(w_px, h_px) * max(design_scale, 0.01)))
+            design_resized = _fit_cover(design, d_px, d_px)
+            paste_x = int(w_px / 2 - d_px / 2 + design_offset_x * w_px)
+            paste_y = int(h_px / 2 - d_px / 2 + design_offset_y * h_px)
             # Mask uygula
             result = Image.new("RGBA", (w_px, h_px), (255, 255, 255, 0))
-            result.paste(design_resized, (0, 0))
+            result.paste(design_resized, (paste_x, paste_y))
             result.putalpha(mask)
             # RGB'ye dönüştür (beyaz arka plan)
             bg = Image.new("RGB", (w_px, h_px), (255, 255, 255))

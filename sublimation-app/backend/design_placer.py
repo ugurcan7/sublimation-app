@@ -53,6 +53,9 @@ class SVGDesignPlacer:
         output_path: str,
         cut_line: bool = True,
         rotation: int = 0,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        scale: float = 1.0,
     ) -> str:
         """
         SVG dosyasını üret ve output_path'e kaydet.
@@ -131,7 +134,8 @@ class SVGDesignPlacer:
                 img_y = bb.y_min - self.bleed
                 img_w = bb.width + 2 * self.bleed
                 img_h = bb.height + 2 * self.bleed
-                lines += _image_lines(img_data, mime, img_x, img_y, img_w, img_h, use_clip, rotation)
+                lines += _image_lines(img_data, mime, img_x, img_y, img_w, img_h, use_clip, rotation,
+                                     offset_x=offset_x, offset_y=offset_y, scale=scale)
             else:
                 # Görsel yüklenemedi — renk dolgusu
                 lines.append(
@@ -167,7 +171,8 @@ class SVGDesignPlacer:
         design_files: dict,    # {piece_type: image_path}
         output_dir: str,
         size: str,
-        rotations: Optional[dict] = None,  # {piece_type: int degrees}
+        rotations: Optional[dict] = None,   # {piece_type: int degrees}
+        transforms: Optional[dict] = None,  # {piece_type: (offset_x, offset_y, scale)}
     ) -> dict:
         """
         Bir bedendeki tüm parçalar için ayrı SVG dosyaları üret.
@@ -176,21 +181,23 @@ class SVGDesignPlacer:
         """
         os.makedirs(output_dir, exist_ok=True)
         result = {}
-        rotations = rotations or {}
+        rotations  = rotations  or {}
+        transforms = transforms or {}
 
         for piece_type, graded_piece in pieces.items():
             design_path = design_files.get(piece_type)
-            # Tasarım yoksa bu parçayı atla
             if not design_path or not os.path.exists(design_path):
                 logger.info(f"Tasarım yok, atlanıyor: {size}/{piece_type}")
                 continue
             out_path = os.path.join(output_dir, f"{size}_{piece_type}.svg")
+            tx = transforms.get(piece_type, (0.0, 0.0, 1.0))
             try:
                 self.generate_svg(
                     piece=graded_piece,
                     design_image_path=design_path,
                     output_path=out_path,
                     rotation=rotations.get(piece_type, 0),
+                    offset_x=tx[0], offset_y=tx[1], scale=tx[2],
                 )
                 result[piece_type] = out_path
             except Exception as e:
@@ -205,13 +212,15 @@ class SVGDesignPlacer:
         output_path: str,
         size: str,
         pieces_per_row: int = 2,
-        rotations: Optional[dict] = None,  # {piece_type: int degrees}
+        rotations: Optional[dict] = None,   # {piece_type: int degrees}
+        transforms: Optional[dict] = None,  # {piece_type: (offset_x, offset_y, scale)}
     ) -> str:
         """
         Tüm parçaları tek bir SVG'de yan yana yerleştir.
         Sublimasyon yazıcılar için tek çıktı dosyası.
         """
-        rotations = rotations or {}
+        rotations  = rotations  or {}
+        transforms = transforms or {}
 
         # Tasarım yüklenmemiş parçaları filtrele
         piece_list = [
@@ -333,8 +342,10 @@ class SVGDesignPlacer:
                 img_w = piece_dims[idx][0]
                 img_h = piece_dims[idx][1]
                 rot = rotations.get(ptype, 0)
+                tx  = transforms.get(ptype, (0.0, 0.0, 1.0))
                 lines.append(f'  <!-- {size} {ptype} -->')
-                lines += _image_lines(img_data, mime, img_x, img_y, img_w, img_h, use_clip, rot)
+                lines += _image_lines(img_data, mime, img_x, img_y, img_w, img_h, use_clip, rot,
+                                     offset_x=tx[0], offset_y=tx[1], scale=tx[2])
             else:
                 lines.append(f'  <polygon points="{poly_str}" fill="#e0e0e0" />')
 
@@ -362,20 +373,23 @@ def _image_lines(
     x: float, y: float, w: float, h: float,
     clip_id: str,
     rotation: int = 0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale: float = 1.0,
 ) -> List[str]:
     """
-    SVG <image> elementini döndürme destekli üretir.
+    SVG <image> elementini döndürme + konum/ölçek destekli üretir.
 
-    Her rotasyon için parçayı tam kapsayan kare kullanır (max(w,h)×max(w,h)).
-    Bu sayede görsel viewBox dışına çıkmaz ve rotasyon sonrası kaybolmaz.
+    offset_x / offset_y: parça genişliği/yüksekliği cinsinden kaydırma (-1..1)
+    scale: ölçek çarpanı (1.0 = parçayı tam doldur, 2.0 = 2x zoom in)
     """
     cx = x + w / 2
     cy = y + h / 2
 
-    # Her rotasyonda parçayı tamamen kaplayacak kare
-    d = max(w, h)
-    ix = cx - d / 2
-    iy = cy - d / 2
+    # Kare boyut (scale uygula)
+    d = max(w, h) * max(scale, 0.01)
+    ix = cx - d / 2 + offset_x * w
+    iy = cy - d / 2 + offset_y * h
 
     transform_attr = f' transform="rotate({rotation}, {cx:.4f}, {cy:.4f})"' if rotation else ''
 

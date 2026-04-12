@@ -14,6 +14,7 @@ const state = {
   activePieceTypes: [],
   designFiles:      {},
   designRotations:  {},
+  designTransforms: {},   // { type: { offsetX, offsetY, scale } }
   designDataUrls:   {},
   piecePreview:     {},
   failedSizes:      [],
@@ -102,6 +103,7 @@ function resetState() {
   state.activePieceTypes = [];
   state.designFiles = {};
   state.designRotations = {};
+  state.designTransforms = {};
   state.designDataUrls = {};
   state.piecePreview = {};
   state.sizeLabel = "";
@@ -619,11 +621,12 @@ function _thumbSvgContent(type, pdata, imgSrc, deg) {
   const cx = W/2, cy = H/2;
   let imgEl = "";
   if (imgSrc) {
-    // Kare görsel: her rotasyonda parçayı tamamen kapsar, viewBox dışına çıkmaz
-    const d   = Math.max(dw, dh);
-    const ix  = (cx - d/2).toFixed(1);
-    const iy  = (cy - d/2).toFixed(1);
-    const tr  = deg ? ` transform="rotate(${deg} ${cx} ${cy})"` : "";
+    const tx   = state.designTransforms[type] || { offsetX: 0, offsetY: 0, scale: 1.0 };
+    const scl  = Math.max(tx.scale, 0.01);
+    const d    = Math.max(dw, dh) * scl;
+    const ix   = (cx - d/2 + tx.offsetX * dw).toFixed(1);
+    const iy   = (cy - d/2 + tx.offsetY * dh).toFixed(1);
+    const tr   = deg ? ` transform="rotate(${deg} ${cx} ${cy})"` : "";
     imgEl = `<g clip-path="url(#${clipId})">
       <image href="${imgSrc}" x="${ix}" y="${iy}"
              width="${d.toFixed(1)}" height="${d.toFixed(1)}"
@@ -640,12 +643,20 @@ function _thumbSvgContent(type, pdata, imgSrc, deg) {
 }
 
 function updateThumbDesign(type) {
-  const svgEl = document.getElementById(`thumb-design-${type}`);
+  const safeId = `design-${type}`;
+  const svgEl  = document.getElementById(`thumb-${safeId}`);
   if (!svgEl) return;
   const pdata  = state.piecePreview[type];
   const imgSrc = state.designDataUrls[type] || null;
   const deg    = state.designRotations[type] ?? 0;
   svgEl.innerHTML = _thumbSvgContent(type, pdata, imgSrc, deg);
+  // dw/dh'yi SVG element'e yaz (drag hesabı için)
+  if (pdata?.bbox) {
+    const W = 200, H = 130, pad = 10;
+    const scale = Math.min((W - 2*pad) / pdata.bbox.w, (H - 2*pad) / pdata.bbox.h);
+    svgEl.dataset.dw = (pdata.bbox.w * scale).toFixed(2);
+    svgEl.dataset.dh = (pdata.bbox.h * scale).toFixed(2);
+  }
 }
 
 function _refreshAdaptBtn() {
@@ -767,7 +778,8 @@ function renderDesignSection(types, previewData) {
       <div class="design-drop" data-type="${type}">
         <svg id="thumb-${safeId}" class="piece-thumb-svg"
              viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg"
-             xmlns:xlink="http://www.w3.org/1999/xlink">
+             xmlns:xlink="http://www.w3.org/1999/xlink"
+             data-type="${type}" data-dw="0" data-dh="0">
           ${_thumbSvgContent(type, pdata, null, 0)}
         </svg>
         <div class="thumb-upload-hint" id="hint-${safeId}">
@@ -779,6 +791,13 @@ function renderDesignSection(types, previewData) {
         </div>
         <button type="button" class="btn-remove hidden" data-type="${type}" id="remove-${safeId}">✕</button>
         <label for="input-${safeId}" class="design-click-overlay" id="label-${safeId}"></label>
+      </div>
+      <div class="tx-controls hidden" id="txctrls-${safeId}">
+        <span class="tx-label">Konum</span>
+        <input type="range" class="tx-slider" id="scale-slider-${safeId}"
+               data-type="${type}" min="0.8" max="3.0" step="0.05" value="1.0">
+        <span class="tx-scale-val" id="scale-val-${safeId}">1.0×</span>
+        <button type="button" class="btn-tx-reset" data-type="${type}" id="tx-reset-${safeId}">⟲</button>
       </div>`;
     grid.appendChild(card);
 
@@ -798,6 +817,28 @@ function renderDesignSection(types, previewData) {
     btnR.addEventListener("click",    e => { e.stopPropagation(); removeDesign(type); });
     btnRot.addEventListener("click",  e => { e.stopPropagation(); rotateDesign(type); });
     btnPrev.addEventListener("click", e => { e.stopPropagation(); openPreviewModal(type, pdata); });
+
+    // Sürükle-bırak konum kontrolü
+    const svgThumb = card.querySelector(".piece-thumb-svg");
+    _initDragTransform(svgThumb, type);
+
+    // Scale slider
+    const scaleSlider = card.querySelector(".tx-slider");
+    scaleSlider.addEventListener("input", function() {
+      if (!state.designTransforms[type]) state.designTransforms[type] = { offsetX: 0, offsetY: 0, scale: 1.0 };
+      state.designTransforms[type].scale = parseFloat(this.value);
+      document.getElementById(`scale-val-${safeId}`).textContent = parseFloat(this.value).toFixed(2) + "×";
+      updateThumbDesign(type);
+    });
+
+    // Reset butonu
+    card.querySelector(".btn-tx-reset").addEventListener("click", e => {
+      e.stopPropagation();
+      state.designTransforms[type] = { offsetX: 0, offsetY: 0, scale: 1.0 };
+      scaleSlider.value = "1.0";
+      document.getElementById(`scale-val-${safeId}`).textContent = "1.0×";
+      updateThumbDesign(type);
+    });
   });
 
   // "Tümüne uygula"
@@ -829,9 +870,17 @@ function handleDesign(type, file) {
   const reader = new FileReader();
   reader.onload = ev => {
     state.designDataUrls[type] = ev.target.result;
+    // Transform sıfırla (yeni yükleme)
+    if (!state.designTransforms[type]) {
+      state.designTransforms[type] = { offsetX: 0, offsetY: 0, scale: 1.0 };
+    }
     updateThumbDesign(type);
     document.getElementById(`hint-${safeId}`)?.classList.add("hidden");
     document.getElementById(`remove-${safeId}`)?.classList.remove("hidden");
+    document.getElementById(`txctrls-${safeId}`)?.classList.remove("hidden");
+    // SVG'ye "grab" cursor ver
+    const svgEl = document.getElementById(`thumb-${safeId}`);
+    if (svgEl) svgEl.classList.add("has-design");
     const btnRot = document.getElementById(`rotate-${safeId}`);
     if (btnRot) {
       btnRot.classList.remove("hidden");
@@ -854,18 +903,101 @@ function rotateDesign(type) {
 function removeDesign(type) {
   delete state.designFiles[type];
   delete state.designRotations[type];
+  delete state.designTransforms[type];
   delete state.designDataUrls[type];
   updateThumbDesign(type);
   _refreshAdaptBtn();
   const safeId = `design-${type}`;
   document.getElementById(`hint-${safeId}`)?.classList.remove("hidden");
   document.getElementById(`remove-${safeId}`)?.classList.add("hidden");
+  document.getElementById(`txctrls-${safeId}`)?.classList.add("hidden");
+  document.getElementById(`thumb-${safeId}`)?.classList.remove("has-design");
+  const sliderEl = document.getElementById(`scale-slider-${safeId}`);
+  if (sliderEl) sliderEl.value = "1.0";
+  const valEl = document.getElementById(`scale-val-${safeId}`);
+  if (valEl) valEl.textContent = "1.0×";
   const btnRot = document.getElementById(`rotate-${safeId}`);
   if (btnRot) {
     btnRot.classList.add("hidden");
     const degEl = btnRot.querySelector(".rotate-deg");
     if (degEl) degEl.textContent = "0°";
   }
+}
+
+// Sürükleme ile desen konumlandırma
+function _initDragTransform(svgEl, type) {
+  if (!svgEl) return;
+  let dragging = false;
+  let startClientX, startClientY, startOffX, startOffY;
+
+  // Parça boyutlarını veri attribute'tan al (updateThumbDesign'de set edilir)
+  const getDims = () => ({
+    dw: parseFloat(svgEl.dataset.dw) || 100,
+    dh: parseFloat(svgEl.dataset.dh) || 80,
+  });
+
+  svgEl.addEventListener("mousedown", e => {
+    if (!state.designDataUrls[type]) return; // tasarım yoksa sürükleme yok
+    e.preventDefault();
+    dragging = true;
+    startClientX = e.clientX;
+    startClientY = e.clientY;
+    const tx = state.designTransforms[type] || { offsetX: 0, offsetY: 0, scale: 1.0 };
+    startOffX = tx.offsetX;
+    startOffY = tx.offsetY;
+    svgEl.style.cursor = "grabbing";
+  });
+
+  window.addEventListener("mousemove", e => {
+    if (!dragging) return;
+    const rect  = svgEl.getBoundingClientRect();
+    const vbW   = 200;  // SVG viewBox genişliği
+    const domW  = rect.width;
+    const { dw, dh } = getDims();
+    // DOM piksel delta → SVG koordinat → parça birimi
+    const dxSvg = (e.clientX - startClientX) * (vbW / domW);
+    const dySvg = (e.clientY - startClientY) * (vbW / domW); // kare viewbox
+    const newOffX = startOffX + dxSvg / dw;
+    const newOffY = startOffY + dySvg / dh;
+
+    if (!state.designTransforms[type]) state.designTransforms[type] = { offsetX: 0, offsetY: 0, scale: 1.0 };
+    state.designTransforms[type].offsetX = newOffX;
+    state.designTransforms[type].offsetY = newOffY;
+    updateThumbDesign(type);
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (dragging) {
+      dragging = false;
+      svgEl.style.cursor = state.designDataUrls[type] ? "grab" : "default";
+    }
+  });
+
+  // Touch desteği
+  svgEl.addEventListener("touchstart", e => {
+    if (!state.designDataUrls[type]) return;
+    const t = e.touches[0];
+    dragging = true;
+    startClientX = t.clientX; startClientY = t.clientY;
+    const tx = state.designTransforms[type] || { offsetX: 0, offsetY: 0, scale: 1.0 };
+    startOffX = tx.offsetX; startOffY = tx.offsetY;
+  }, { passive: true });
+
+  svgEl.addEventListener("touchmove", e => {
+    if (!dragging) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = svgEl.getBoundingClientRect();
+    const { dw, dh } = getDims();
+    const dxSvg = (t.clientX - startClientX) * (200 / rect.width);
+    const dySvg = (t.clientY - startClientY) * (200 / rect.width);
+    if (!state.designTransforms[type]) state.designTransforms[type] = { offsetX: 0, offsetY: 0, scale: 1.0 };
+    state.designTransforms[type].offsetX = startOffX + dxSvg / dw;
+    state.designTransforms[type].offsetY = startOffY + dySvg / dh;
+    updateThumbDesign(type);
+  }, { passive: false });
+
+  svgEl.addEventListener("touchend", () => { dragging = false; });
 }
 
 async function uploadDesigns() {
@@ -950,6 +1082,14 @@ async function runGrading() {
     }
     if (state.sizeLabel && state.sizeLabel !== "BASE") fd.append("size_label", state.sizeLabel);
     if (rotStr) fd.append("design_rotations", rotStr);
+    // Desen transform'ları (konum + ölçek)
+    const txMap = {};
+    for (const [t, tx] of Object.entries(state.designTransforms)) {
+      if (tx.offsetX !== 0 || tx.offsetY !== 0 || tx.scale !== 1.0) {
+        txMap[t] = [tx.offsetX, tx.offsetY, tx.scale];
+      }
+    }
+    if (Object.keys(txMap).length) fd.append("design_transforms", JSON.stringify(txMap));
     // Flat grading adım büyüklükleri
     if (state.flatGradingSizes?.length) {
       const ws = parseFloat(document.getElementById("width-step-input")?.value || "4");

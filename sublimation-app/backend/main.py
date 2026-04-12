@@ -549,9 +549,10 @@ async def run_grading(
     bleed_mm: float = Form(default=3.0),
     dpi: int = Form(default=300),
     design_rotations: str = Form(default=""),
-    size_label: str = Form(default=""),       # flat modda çıktı için beden etiketi (M, L, 42 vs.)
-    width_step_mm: float = Form(default=4.0), # flat grading adım genişliği
-    height_step_mm: float = Form(default=2.0),# flat grading adım yüksekliği
+    design_transforms: str = Form(default=""), # JSON: {"front":[ox,oy,scale],...}
+    size_label: str = Form(default=""),        # flat modda çıktı için beden etiketi
+    width_step_mm: float = Form(default=4.0),  # flat grading adım genişliği
+    height_step_mm: float = Form(default=2.0), # flat grading adım yüksekliği
 ):
     """
     Grading çalıştır + tüm bedenlere desen yerleştir + SVG üret.
@@ -581,6 +582,17 @@ async def run_grading(
                 rotations[ptype.strip()] = int(deg_str.strip())
             except ValueError:
                 pass
+
+    # Tasarım transform'larını parse et: JSON → {"front": (ox, oy, scale), ...}
+    import json as _json
+    piece_transforms: Dict[str, tuple] = {}
+    if design_transforms.strip():
+        try:
+            raw_tx = _json.loads(design_transforms)
+            for ptype, v in raw_tx.items():
+                piece_transforms[ptype] = (float(v[0]), float(v[1]), float(v[2]))
+        except Exception:
+            pass
 
     # Beden tespiti: çoklu beden varsa passthrough, tek BASE ise flat mod
     has_base = "BASE" in s.parsed_pieces
@@ -692,6 +704,7 @@ async def run_grading(
                 output_path=combined_svg_path,
                 size=size,
                 rotations=rotations,
+                transforms=piece_transforms,
             )
         except Exception as e:
             logger.error(f"Beden {size} SVG hatası: {e}")
@@ -706,6 +719,7 @@ async def run_grading(
             output_dir=str(size_out_dir / "pieces"),
             size=size,
             rotations=rotations,
+            transforms=piece_transforms,
         )
 
         s.output_svgs[size] = {
@@ -725,6 +739,7 @@ async def run_grading(
             design_files=s.design_files,
             bleed_mm=bleed_mm,
             rotations=rotations,
+            transforms=piece_transforms,
         )
 
         if pdf_ok:
