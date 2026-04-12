@@ -292,19 +292,6 @@ def _render_piece(
     for i in range(len(poly_px)):
         draw.line([poly_px[i], poly_px[(i+1) % len(poly_px)]], fill=color, width=cut_width)
 
-    # ── 4. Etiket ──
-    cx = int(sum(x for x, y in poly_px) / len(poly_px))
-    cy = int(sum(y for x, y in poly_px) / len(poly_px))
-    label = f"{gp.size}  {_piece_name_tr(gp.piece_type)}"
-    font_size = max(12, int(px_per_mm * 4))
-    font = _load_font(font_size)
-
-    # Etiket arka planı
-    bbox = draw.textbbox((cx, cy), label, font=font, anchor="mm")
-    draw.rectangle([bbox[0]-4, bbox[1]-2, bbox[2]+4, bbox[3]+2],
-                   fill=(255, 255, 255, 200))
-    draw.text((cx, cy), label, font=font, fill=(30, 30, 30), anchor="mm")
-
     return piece_img
 
 
