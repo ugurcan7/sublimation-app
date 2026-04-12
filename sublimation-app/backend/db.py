@@ -27,23 +27,21 @@ DB_VERSION = 1
 
 def init_db(db_path: Path) -> None:
     """Veritabanı ve tabloları oluştur."""
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            id          TEXT PRIMARY KEY,
-            data_json   TEXT NOT NULL,
-            created_at  TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS meta (
-            key   TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-    conn.execute("INSERT OR IGNORE INTO meta VALUES ('version', ?)", (str(DB_VERSION),))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id          TEXT PRIMARY KEY,
+                data_json   TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        conn.execute("INSERT OR IGNORE INTO meta VALUES ('version', ?)", (str(DB_VERSION),))
 
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -51,13 +49,11 @@ def init_db(db_path: Path) -> None:
 def save_session(db_path: Path, session: UploadSession) -> None:
     try:
         data = _serialize_session(session)
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "INSERT OR REPLACE INTO sessions (id, data_json, created_at) VALUES (?, ?, ?)",
-            (session.session_id, data, session.created_at.isoformat()),
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO sessions (id, data_json, created_at) VALUES (?, ?, ?)",
+                (session.session_id, data, session.created_at.isoformat()),
+            )
     except Exception as e:
         logger.warning(f"SQLite kayıt hatası: {e}")
 
@@ -65,30 +61,42 @@ def save_session(db_path: Path, session: UploadSession) -> None:
 def load_all_sessions(db_path: Path) -> Dict[str, UploadSession]:
     if not db_path.exists():
         return {}
-    sessions: Dict[str, UploadSession] = {}
+    loaded: Dict[str, UploadSession] = {}
     try:
-        conn = sqlite3.connect(str(db_path))
-        rows = conn.execute("SELECT id, data_json FROM sessions").fetchall()
-        conn.close()
+        with sqlite3.connect(str(db_path)) as conn:
+            rows = conn.execute("SELECT id, data_json FROM sessions").fetchall()
         for sid, data_json in rows:
             try:
-                sessions[sid] = _deserialize_session(data_json)
+                loaded[sid] = _deserialize_session(data_json)
             except Exception as e:
                 logger.warning(f"Oturum {sid} yüklenemedi: {e}")
-        logger.info(f"SQLite'dan {len(sessions)} oturum yüklendi")
+        logger.info(f"SQLite'dan {len(loaded)} oturum yüklendi")
     except Exception as e:
         logger.warning(f"SQLite yükleme hatası: {e}")
-    return sessions
+    return loaded
 
 
 def delete_session(db_path: Path, session_id: str) -> None:
     try:
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
     except Exception as e:
         logger.warning(f"SQLite silme hatası: {e}")
+
+
+def delete_sessions_batch(db_path: Path, session_ids: list) -> None:
+    """Birden fazla oturumu tek sorguda sil."""
+    if not session_ids:
+        return
+    try:
+        placeholders = ",".join("?" * len(session_ids))
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute(
+                f"DELETE FROM sessions WHERE id IN ({placeholders})", session_ids
+            )
+        logger.info(f"SQLite: {len(session_ids)} oturum toplu silindi")
+    except Exception as e:
+        logger.warning(f"SQLite toplu silme hatası: {e}")
 
 
 # ─── Pickle → SQLite migration ────────────────────────────────────────────────

@@ -100,10 +100,10 @@ def _load_sessions() -> Dict[str, UploadSession]:
 
 
 def _cleanup_old_sessions() -> None:
-    """24 saatten eski veya dosyaları kayıp oturumları temizle."""
+    """24 saatten eski veya dosyaları kayıp oturumları temizle (memory + SQLite + disk)."""
     cutoff = datetime.now() - timedelta(hours=24)
     to_del = []
-    for sid, s in sessions.items():
+    for sid, s in list(sessions.items()):
         age_ok  = getattr(s, "created_at", datetime.now()) < cutoff
         file_ok = s.plt_path and Path(s.plt_path).exists()
         if age_ok or (s.plt_path and not file_ok):
@@ -113,8 +113,10 @@ def _cleanup_old_sessions() -> None:
         for d in [UPLOAD_DIR / sid, OUTPUT_DIR / sid]:
             if d.exists():
                 shutil.rmtree(d, ignore_errors=True)
+    # SQLite'ı da temizle — yoksa restart'ta tekrar yüklenir
+    session_db.delete_sessions_batch(DB_PATH, to_del)
     if to_del:
-        logger.info(f"{len(to_del)} eski/geçersiz oturum temizlendi")
+        logger.info(f"{len(to_del)} eski/geçersiz oturum temizlendi (memory + DB + disk)")
 
 
 # ─── Oturum deposu ────────────────────────────────────────────────────────────
@@ -124,6 +126,21 @@ _cleanup_old_sessions()
 # ─── Progress deposu ──────────────────────────────────────────────────────────
 # { session_id: {"pct": int, "msg": str, "done": bool, "error": str|None} }
 progress_store: Dict[str, Dict] = {}
+
+# ─── Periyodik temizlik (her 6 saatte bir) ────────────────────────────────────
+import asyncio
+
+async def _periodic_cleanup():
+    while True:
+        await asyncio.sleep(6 * 3600)
+        try:
+            _cleanup_old_sessions()
+        except Exception as e:
+            logger.warning(f"Periyodik temizlik hatası: {e}")
+
+@app.on_event("startup")
+async def _start_cleanup_task():
+    asyncio.create_task(_periodic_cleanup())
 
 
 def _get_session(session_id: str) -> UploadSession:
@@ -200,6 +217,11 @@ async def delete_session(session_id: str):
     return {"deleted": session_id}
 
 
+# ─── Dosya boyut sınırları ────────────────────────────────────────────────────
+MAX_PLT_SIZE    = 20 * 1024 * 1024   # 20 MB
+MAX_DESIGN_SIZE = 50 * 1024 * 1024   # 50 MB (TIFF için geniş tutuluyor)
+
+
 # ─── PLT yükleme ──────────────────────────────────────────────────────────────
 
 @app.post("/session/{session_id}/plt")
@@ -221,6 +243,8 @@ async def upload_plt(
     save_path = save_dir / "pastal.plt"
 
     content = await file.read()
+    if len(content) > MAX_PLT_SIZE:
+        raise HTTPException(413, f"PLT dosyası çok büyük (max {MAX_PLT_SIZE // 1024 // 1024} MB)")
     async with aiofiles.open(save_path, "wb") as f:
         await f.write(content)
 
@@ -489,6 +513,8 @@ async def upload_design(
         raise HTTPException(400, "Desteklenen format: PNG, JPG, SVG, WEBP, TIFF")
 
     content = await file.read()
+    if len(content) > MAX_DESIGN_SIZE:
+        raise HTTPException(413, f"Tasarım dosyası çok büyük (max {MAX_DESIGN_SIZE // 1024 // 1024} MB)")
 
     # TIFF → JPEG dönüşümü: boyutu küçült, sistem yükünü azalt
     if ext in (".tif", ".tiff"):
